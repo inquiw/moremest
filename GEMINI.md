@@ -70,4 +70,42 @@ When the user requests an "Anthropic" style or a strict corporate brand guide, a
   - Accents: Orange `#d97757` (primary), Blue `#6a9bcc` (secondary), Green `#788c5d` (tertiary).
 - **Typography**: `Poppins` for all headings (fallback Arial). `Lora` for body text (fallback Georgia).
 - **Shapes & Accents**: Cycle through orange, blue, and green for non-text shapes or interactive accents.
+
+## 7. Carousel with Rounded Corners (Tutorial)
+
+When building a horizontal scrollable carousel with rounded corners and navigation arrows, use this exact structure:
+
+```
+<div className="relative">                          {/* 1. Outer: relative for arrow positioning */}
+  <div className="rounded-2xl overflow-hidden">     {/* 2. Middle: clips content to rounded shape */}
+    <div
+      ref={scrollRef}
+      className="flex gap-4 overflow-x-auto overflow-y-hidden"
+      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+    >                                               {/* 3. Inner: scrollable row */}
+      {items.map((item, i) => (
+        <div className="shrink-0 w-[calc(25%-12px)] ...">  {/* 4. Cards: calc width for N visible */}
+          ...
+        </div>
+      ))}
+    </div>
+  </div>
+
+  {/* Arrows OUTSIDE overflow-hidden, positioned absolute */}
+  <button className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-20 ...">
+    ←
+  </button>
+  <button className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 z-20 ...">
+    →
+  </button>
+</div>
+```
+
+**Key rules:**
+- **3-layer nesting**: `relative` → `rounded-2xl overflow-hidden` → `overflow-x-auto`. Do NOT skip any layer.
+- **Arrows outside `overflow-hidden`**: Place arrow buttons as siblings of the `overflow-hidden` div, inside the `relative` wrapper. Otherwise arrows get clipped.
+- **Card width with `calc`**: For 4 visible cards with `gap-4` (16px), use `w-[calc(25%-12px)]`. Formula: `(100% - (N-1) * gap) / N`. For gap-4 and 4 cards: `(100% - 48px) / 4 = 25% - 12px`.
+- **Scroll step = 2 cards**: `scrollBy((cardWidth + gap) * 2)`.
+- **No padding on scroll container**: Padding breaks the `calc` card widths. Use padding on individual cards instead.
+- **Hide scrollbar**: `scrollbarWidth: 'none'` + `msOverflowStyle: 'none'` on the scroll div.
 <!-- premium-web-development -->
