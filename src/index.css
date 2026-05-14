@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    font-family: 'DM Sans', sans-serif;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-white/10 backdrop-blur-xl border border-white/15;
+  }
+  .glass-dark {
+    @apply bg-ocean-900/60 backdrop-blur-xl border border-white/10;
+  }
+  .glass-card-white {
+    @apply bg-white/80 backdrop-blur-lg border border-white/50 shadow-xl shadow-black/5;
+  }
+  .luxury-shadow {
+    @apply shadow-[0_24px_80px_-16px_rgba(6,43,54,0.18)];
+  }
+  .luxury-shadow-lg {
+    @apply shadow-[0_40px_100px_-20px_rgba(6,43,54,0.25)];
+  }
+}
