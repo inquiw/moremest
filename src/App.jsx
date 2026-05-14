@@ -6,6 +6,7 @@ import Destinations from './components/Destinations';
 import Experiences from './components/Experiences';
 import Footer from './components/Footer';
 import SearchResults from './pages/SearchResults';
+import Profile from './pages/Profile';
 
 const Home = () => (
   <>
@@ -23,6 +24,7 @@ const App = () => {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/search" element={<SearchResults />} />
+        <Route path="/profile" element={<Profile />} />
       </Routes>
     </div>
   );
