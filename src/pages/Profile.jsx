@@ -4,7 +4,7 @@ import {
   User, Mail, LogOut, Calendar, Heart, Settings, Phone, Home,
   Star, MessageSquare, CreditCard, Gift, Headphones, ChevronRight,
   MapPin, Clock, CheckCircle2, AlertCircle, TrendingUp,
-  Save, Shield, Bell, Eye, EyeOff, Lock, Edit3, Plus, Trash2, Send, Copy
+  Save, Shield, Bell, Eye, EyeOff, Lock, Edit3, Plus, Trash2, Send, Copy, Building2, X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabaseClient';
@@ -52,6 +52,7 @@ const MOCK_PAYMENTS = [
 
 const SIDEBAR_NAV = [
   { key: 'home', label: 'Главная', icon: Home },
+  { key: 'myproperties', label: 'Мои объекты', icon: Building2 },
   { key: 'bookings', label: 'Мои бронирования', icon: Calendar },
   { key: 'favorites', label: 'Избранное', icon: Heart },
   { key: 'reviews', label: 'Отзывы', icon: Star },
@@ -82,6 +83,13 @@ const Profile = () => {
   const [formLastName, setFormLastName] = useState('');
   const [formEmail, setFormEmail] = useState('');
   const [formPhone, setFormPhone] = useState('');
+  const [myProperties, setMyProperties] = useState([]);
+  const [loadingProps, setLoadingProps] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editPhotos, setEditPhotos] = useState([]);
+  const [uploadingEditPhotos, setUploadingEditPhotos] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -115,14 +123,171 @@ const Profile = () => {
     }
   };
 
+  const TYPE_LABELS = { apartment: 'Квартира', house: 'Дом / Вилла', hotel: 'Отель', guesthouse: 'Гостевой дом', room: 'Номер в гостинице', 'Квартира': 'Квартира', 'Дом / Вилла': 'Дом / Вилла', 'Отель': 'Отель', 'Гостиница': 'Гостевой дом', 'Гостевой дом': 'Гостевой дом' };
+
+  const OBJECT_TYPE_OPTIONS = [
+    { value: 'Квартира', label: 'Квартира' },
+    { value: 'Дом / Вилла', label: 'Дом / Вилла' },
+    { value: 'Номер в гостинице', label: 'Номер в гостинице' },
+    { value: 'Гостевой дом', label: 'Гостевой дом' },
+  ];
+
+  const LEGAL_STATUS_OPTIONS = [
+    { value: 'individual', label: 'Физ. лицо' },
+    { value: 'selfemployed', label: 'Самозанятый' },
+    { value: 'ip', label: 'ИП' },
+    { value: 'ooo', label: 'ООО' },
+  ];
+
+  const formatPhone = (raw) => {
+    const d = raw.replace(/\D/g, '');
+    if (d.length === 0) return '';
+    if (d.length <= 1) return '+' + d;
+    if (d.length <= 4) return `+${d[0]} (${d.slice(1)}`;
+    if (d.length <= 7) return `+${d[0]} (${d.slice(1,4)}) ${d.slice(4)}`;
+    if (d.length <= 9) return `+${d[0]} (${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7)}`;
+    return `+${d[0]} (${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7,9)}-${d.slice(9,11)}`;
+  };
+
+  const isValidPhone = (phone) => /^\+7 \(\d{3}\) \d{3}-\d{2}-\d{2}$/.test(phone);
+
+  const setEditMainPhoto = (url) => {
+    setEditPhotos((prev) => {
+      const rest = prev.filter((p) => p !== url);
+      return [url, ...rest];
+    });
+  };
+
+  const startEdit = (p) => {
+    const addrParts = (p.address || '').split(',').map(s => s.trim());
+    const streetVal = addrParts.length > 1 ? addrParts.slice(0, -1).join(', ') : addrParts[0] || '';
+    const houseVal = addrParts.length > 1 ? addrParts[addrParts.length - 1] : '';
+    setEditingId(p.id);
+    setEditForm({
+      name: p.name || '',
+      description: p.description || '',
+      type: p.type || '',
+      city: p.city || '',
+      street: streetVal,
+      house: houseVal,
+      rooms: p.rooms?.toString() || '',
+      price: p.price?.toString() || '',
+      phone: p.owner_phone || '',
+      amenities: p.amenities || [],
+      legalStatus: p.legal_status || '',
+      is_published: p.is_published,
+    });
+    setEditPhotos(p.images || []);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditForm({});
+    setEditPhotos([]);
+  };
+
+  const saveEdit = async (propertyId) => {
+    setSavingEdit(true);
+    try {
+      const { error } = await supabase
+        .from('properties')
+        .update({
+          name: editForm.name,
+          description: editForm.description,
+          type: editForm.type,
+          city: editForm.city,
+          address: [editForm.street, editForm.house].filter(Boolean).join(', '),
+          rooms: Number(editForm.rooms) || 1,
+          price: Number(editForm.price) || 0,
+          owner_phone: editForm.phone,
+          amenities: editForm.amenities,
+          legal_status: editForm.legalStatus,
+          is_published: editForm.is_published,
+          img: editPhotos[0] || '/img/placeholder.jpg',
+          images: editPhotos,
+        })
+        .eq('id', propertyId);
+      if (error) throw error;
+      setEditingId(null);
+      fetchMyProperties();
+    } catch (err) {
+      alert('Ошибка сохранения: ' + err.message);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleEditPhotoUpload = async (files) => {
+    if (!user || !files.length) return;
+    setUploadingEditPhotos(true);
+    const uploaded = [];
+    try {
+      for (const file of files) {
+        if (editPhotos.length + uploaded.length >= 10) break;
+        const ext = file.name.split('.').pop();
+        const path = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const { data, error } = await supabase.storage
+          .from('property-images')
+          .upload(path, file, { cacheControl: '3600', upsert: false });
+        if (error) throw error;
+        const { data: urlData } = supabase.storage.from('property-images').getPublicUrl(data.path);
+        uploaded.push(urlData.publicUrl);
+      }
+      setEditPhotos((prev) => [...prev, ...uploaded]);
+    } catch (err) {
+      alert('Ошибка загрузки фото: ' + err.message);
+    } finally {
+      setUploadingEditPhotos(false);
+    }
+  };
+
+  const removeEditPhoto = (url) => {
+    setEditPhotos((prev) => prev.filter((p) => p !== url));
+  };
+
+  const toggleEditAmenity = (value) => {
+    setEditForm((prev) => ({
+      ...prev,
+      amenities: prev.amenities.includes(value)
+        ? prev.amenities.filter((a) => a !== value)
+        : [...prev.amenities, value],
+    }));
+  };
+
+  const AMENITY_LABELS = { wifi: 'Wi-Fi', tv: 'ТВ', ac: 'Кондиционер', laundry: 'Стиральная машина', parking: 'Парковка', kitchen: 'Кухня', bed: 'Двуспальная кровать', pool: 'Бассейн', fireplace: 'Камин', bathhouse: 'Баня', bbq: 'Мангал', yard: 'Двор', garden: 'Сад', terrace: 'Терраса', balcony: 'Балкон', stove: 'Печь', hammock: 'Гамак', breakfast: 'Завтрак', dining: 'Питание', spa: 'Спа', shower: 'Душ', jacuzzi: 'Джакузи', vineyard: 'Виноградник', security: 'Охрана', restaurant: 'Ресторан', sea_view: 'Вид на море', mountain_view: 'Вид на горы', city_view: 'Вид на город', forest_view: 'Вид на лес', sunbeds: 'Шезлонги', ski_room: 'Лыжная комната', banquet: 'Банкетный зал', campfire: 'Кострище', linens: 'Постельное бельё', spring: 'Источник', eco_heat: 'Эко-отопление', pets: 'С питомцами' };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate('/');
   };
 
+  const fetchMyProperties = async () => {
+    if (!user) return;
+    setLoadingProps(true);
+    try {
+      const { data, error } = await supabase
+        .from('properties')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setMyProperties(data || []);
+    } catch (err) {
+      console.error('Error fetching properties:', err.message);
+    } finally {
+      setLoadingProps(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeNav === 'myproperties' && user) {
+      fetchMyProperties();
+    }
+  }, [activeNav, user]);
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-[#1a1a1f] via-[#111114] to-[#0a0a0c] flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-ocean-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -388,6 +553,284 @@ const Profile = () => {
                     </div>
                   </div>
                 </>
+              )}
+
+              {/* ═══════ MY PROPERTIES ═══════ */}
+              {activeNav === 'myproperties' && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-xl font-display font-semibold text-white">Мои объекты</h2>
+                    <button
+                      onClick={() => navigate('/add-property')}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-ocean-500 hover:bg-ocean-400 text-white text-sm font-body font-semibold shadow-lg shadow-ocean-500/20 transition-all duration-300 active:scale-[0.97]"
+                    >
+                      <Plus size={16} />
+                      Добавить
+                    </button>
+                  </div>
+
+                  {loadingProps ? (
+                    <div className="flex justify-center py-12">
+                      <div className="w-8 h-8 border-2 border-ocean-500 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : myProperties.length === 0 ? (
+                    <div className={`${CARD} p-10 text-center`}>
+                      <div className="w-16 h-16 rounded-2xl bg-ocean-500/15 flex items-center justify-center mx-auto mb-5">
+                        <Building2 size={28} className="text-ocean-400" />
+                      </div>
+                      <h3 className="text-lg font-display font-semibold text-white mb-2">Пока нет объектов</h3>
+                      <p className="text-sm font-body text-white/50 mb-6">Добавьте свой первый объект и начните получать гостей</p>
+                      <button
+                        onClick={() => navigate('/add-property')}
+                        className="px-6 py-3 rounded-xl bg-ocean-500 hover:bg-ocean-400 text-white text-sm font-body font-semibold shadow-lg shadow-ocean-500/20 transition-all duration-300"
+                      >
+                        Добавить объект
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {myProperties.map((p) => (
+                        <div key={p.id} className={`${CARD} overflow-hidden`}>
+                          {editingId === p.id ? (
+                            /* ── РЕЖИМ РЕДАКТИРОВАНИЯ ── */
+                            <div className="p-5 sm:p-6 space-y-5">
+                              <div className="flex items-center justify-between">
+                                <h3 className="text-base font-body font-semibold text-white">Редактирование</h3>
+                                <div className="flex items-center gap-2">
+                                  <button onClick={cancelEdit} className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-xs font-body font-medium transition-all">Отмена</button>
+                                  <button
+                                    onClick={() => saveEdit(p.id)}
+                                    disabled={savingEdit}
+                                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-ocean-500 hover:bg-ocean-400 text-white text-xs font-body font-semibold transition-all disabled:opacity-50"
+                                  >
+                                    <Save size={13} />
+                                    {savingEdit ? 'Сохранение...' : 'Сохранить'}
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Фото */}
+                              <div>
+                                <label className="text-white/50 font-body text-xs mb-2 block">Фотографии</label>
+                                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 mb-3">
+                                  {editPhotos.map((url, i) => (
+                                    <div key={url} className="relative aspect-square rounded-xl overflow-hidden group">
+                                      <img src={url} alt="" className="w-full h-full object-cover" />
+                                      <button onClick={() => setEditMainPhoto(url)} className={`absolute top-1.5 left-1.5 w-7 h-7 rounded-full flex items-center justify-center transition-opacity ${i === 0 ? 'bg-ocean-500/80 opacity-100' : 'bg-black/40 opacity-0 group-hover:opacity-100'}`}>
+                                        <Star size={14} className={i === 0 ? 'text-white fill-white' : 'text-white/70'} />
+                                      </button>
+                                      <button onClick={() => removeEditPhoto(url)} className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <X size={14} className="text-white" />
+                                      </button>
+                                      {i === 0 && <span className="absolute bottom-1.5 left-1.5 px-2 py-0.5 rounded-md bg-ocean-500/80 text-[10px] font-body font-semibold text-white">Главное</span>}
+                                    </div>
+                                  ))}
+                                  <label className={`aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-colors ${uploadingEditPhotos ? 'border-ocean-500/40' : 'border-white/15 hover:border-ocean-500/40'}`}>
+                                    <input type="file" accept="image/png,image/jpeg,image/webp" multiple className="hidden" onChange={(e) => handleEditPhotoUpload(Array.from(e.target.files))} disabled={uploadingEditPhotos || editPhotos.length >= 10} />
+                                    {uploadingEditPhotos ? <div className="w-5 h-5 border border-ocean-500 border-t-transparent rounded-full animate-spin" /> : <Plus size={22} className="text-white/30" />}
+                                    <span className="text-white/25 text-[10px] font-body mt-1">Добавить</span>
+                                  </label>
+                                </div>
+                              </div>
+
+                              {/* Поля */}
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                  <label className="text-white/50 font-body text-xs mb-1 block">Название</label>
+                                  <input value={editForm.name} onChange={(e) => setEditForm({...editForm, name: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm font-body text-white placeholder-white/30 focus:outline-none focus:border-ocean-500/50 transition-colors" />
+                                </div>
+                                <div className="md:col-span-2">
+                                  <label className="text-white/50 font-body text-xs mb-1.5 block">Тип объекта</label>
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                    {OBJECT_TYPE_OPTIONS.map(o => (
+                                      <button
+                                        key={o.value}
+                                        type="button"
+                                        onClick={() => setEditForm({...editForm, type: o.value})}
+                                        className={`px-3 py-2 rounded-xl text-xs font-body transition-all duration-200 ${editForm.type === o.value ? 'bg-ocean-500/20 border border-ocean-500/40 text-white' : 'bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10'}`}
+                                      >
+                                        {o.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="text-white/50 font-body text-xs mb-1 block">Город</label>
+                                  <input value={editForm.city} onChange={(e) => setEditForm({...editForm, city: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm font-body text-white placeholder-white/30 focus:outline-none focus:border-ocean-500/50 transition-colors" />
+                                </div>
+                                <div className="grid grid-cols-3 gap-2">
+                                  <div className="col-span-2">
+                                    <label className="text-white/50 font-body text-xs mb-1 block">Улица</label>
+                                    <input value={editForm.street || ''} onChange={(e) => setEditForm({...editForm, street: e.target.value})} placeholder="ул. Ленина" className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm font-body text-white placeholder-white/30 focus:outline-none focus:border-ocean-500/50 transition-colors" />
+                                  </div>
+                                  <div>
+                                    <label className="text-white/50 font-body text-xs mb-1 block">Дом</label>
+                                    <input value={editForm.house || ''} onChange={(e) => setEditForm({...editForm, house: e.target.value})} placeholder="15" className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm font-body text-white placeholder-white/30 focus:outline-none focus:border-ocean-500/50 transition-colors" />
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="text-white/50 font-body text-xs mb-1 block">Комнат</label>
+                                  <input type="number" min="1" value={editForm.rooms} onChange={(e) => setEditForm({...editForm, rooms: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm font-body text-white placeholder-white/30 focus:outline-none focus:border-ocean-500/50 transition-colors" />
+                                </div>
+                                <div>
+                                  <label className="text-white/50 font-body text-xs mb-1 block">Цена ₽/ночь</label>
+                                  <input type="number" min="1" value={editForm.price} onChange={(e) => setEditForm({...editForm, price: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm font-body text-white placeholder-white/30 focus:outline-none focus:border-ocean-500/50 transition-colors" />
+                                </div>
+                                <div>
+                                  <label className="text-white/50 font-body text-xs mb-1 block">Телефон</label>
+                                  <input type="tel" value={editForm.phone} onChange={(e) => { const raw = e.target.value.replace(/\D/g, ''); if (raw.length <= 11) setEditForm({...editForm, phone: formatPhone(raw)}); }} placeholder="+7 (___) ___-__-__" className={`w-full bg-white/5 border rounded-xl px-3 py-2.5 text-sm font-body text-white placeholder-white/30 focus:outline-none transition-colors ${editForm.phone && !isValidPhone(editForm.phone) ? 'border-red-500/50 focus:border-red-500/70' : 'border-white/10 focus:border-ocean-500/50'}`} />
+                                  {editForm.phone && !isValidPhone(editForm.phone) && <p className="text-red-400/70 text-[10px] font-body mt-1">Введите номер в формате +7 (XXX) XXX-XX-XX</p>}
+                                </div>
+                                <div className="md:col-span-2">
+                                  <label className="text-white/50 font-body text-xs mb-1.5 block">Юридический статус</label>
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                    {LEGAL_STATUS_OPTIONS.map(o => (
+                                      <button
+                                        key={o.value}
+                                        type="button"
+                                        onClick={() => setEditForm({...editForm, legalStatus: o.value})}
+                                        className={`px-3 py-2 rounded-xl text-xs font-body transition-all duration-200 ${editForm.legalStatus === o.value ? 'bg-ocean-500/20 border border-ocean-500/40 text-white' : 'bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10'}`}
+                                      >
+                                        {o.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Описание */}
+                              <div>
+                                <label className="text-white/50 font-body text-xs mb-1 block">Описание</label>
+                                <textarea rows={3} value={editForm.description} onChange={(e) => setEditForm({...editForm, description: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm font-body text-white placeholder-white/30 focus:outline-none focus:border-ocean-500/50 transition-colors resize-none" />
+                              </div>
+
+                              {/* Удобства */}
+                              <div>
+                                <label className="text-white/50 font-body text-xs mb-2 block">Удобства</label>
+                                <div className="flex flex-wrap gap-2">
+                                  {Object.entries(AMENITY_LABELS).map(([key, label]) => (
+                                    <button
+                                      key={key}
+                                      type="button"
+                                      onClick={() => toggleEditAmenity(key)}
+                                      className={`px-3 py-1.5 rounded-lg text-xs font-body transition-all ${editForm.amenities?.includes(key) ? 'bg-ocean-500/20 border border-ocean-500/40 text-white' : 'bg-white/5 border border-white/10 text-white/40 hover:text-white'}`}
+                                    >
+                                      {label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Переключатель публикации */}
+                              <div className="flex items-center justify-between pt-2 border-t border-white/5">
+                                <span className="text-sm font-body text-white/60">Публикация</span>
+                                <button
+                                  onClick={() => setEditForm({...editForm, is_published: !editForm.is_published})}
+                                  className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${editForm.is_published ? 'bg-ocean-500' : 'bg-white/10'}`}
+                                >
+                                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform duration-200 ${editForm.is_published ? 'translate-x-5' : ''}`} />
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            /* ── РЕЖИМ ПРОСМОТРА ── */
+                            <>
+                              {/* Фото-гелерея */}
+                              <div className="p-5 sm:p-6">
+                                {(p.images && p.images.length > 0) ? (
+                                  <div className="grid grid-cols-3 gap-4 mb-4">
+                                    {p.images.map((url, i) => (
+                                      <div key={url} className="aspect-video rounded-xl overflow-hidden">
+                                        <img src={url} alt={`Фото ${i + 1}`} className="w-full h-full object-cover" />
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="aspect-video rounded-xl overflow-hidden mb-4">
+                                    <img src={p.img || '/img/placeholder.jpg'} alt={p.name} className="w-full h-full object-cover" />
+                                  </div>
+                                )}
+                                <span className={`inline-block px-3 py-1.5 rounded-full text-xs font-body font-semibold backdrop-blur-xl border mb-3 ${
+                                  p.is_published
+                                    ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-300'
+                                    : 'bg-amber-500/20 border-amber-500/30 text-amber-300'
+                                }`}>
+                                  {p.is_published ? 'Активен' : 'Черновик'}
+                                </span>
+                                <div className="flex items-start justify-between gap-4 mb-3">
+                                  <div>
+                                    <h3 className="text-lg font-display font-semibold text-white">{p.name}</h3>
+                                    <div className="flex items-center gap-1.5 mt-1">
+                                      <MapPin size={14} className="text-white/40" />
+                                      <span className="text-sm font-body text-white/50">{p.city}{p.address ? `, ${p.address}` : ''}</span>
+                                    </div>
+                                  </div>
+                                  <p className="text-xl font-display font-bold text-white shrink-0">
+                                    {Number(p.price).toLocaleString('ru-RU')} ₽
+                                    <span className="text-white/40 font-body font-normal text-sm"> / ночь</span>
+                                  </p>
+                                </div>
+
+                                {p.description && (
+                                  <p className="text-sm font-body text-white/50 leading-relaxed mb-4">{p.description}</p>
+                                )}
+
+                                <div className="flex flex-wrap items-center gap-3 mb-4 text-sm font-body text-white/40">
+                                  <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10">{TYPE_LABELS[p.type] || p.type}</span>
+                                  <span>{p.rooms} {p.rooms === 1 ? 'комната' : p.rooms < 5 ? 'комнаты' : 'комнат'}</span>
+                                  {p.amenities && p.amenities.length > 0 && (
+                                    <>
+                                      <span>·</span>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {p.amenities.map((a) => (
+                                          <span key={a} className="px-2 py-0.5 rounded-md bg-ocean-500/10 text-ocean-400 text-xs">{AMENITY_LABELS[a] || a}</span>
+                                        ))}
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+
+                                {p.owner_phone && (
+                                  <div className="flex items-center gap-2 text-sm font-body text-white/40 mb-4">
+                                    <Phone size={14} />
+                                    <span>{p.owner_phone}</span>
+                                  </div>
+                                )}
+
+                                <div className="flex items-center gap-2 pt-4 border-t border-white/5">
+                                  <button
+                                    onClick={() => startEdit(p)}
+                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-ocean-500/15 hover:bg-ocean-500/25 border border-ocean-500/30 text-ocean-400 text-sm font-body font-semibold transition-all duration-200"
+                                  >
+                                    <Edit3 size={14} />
+                                    Редактировать
+                                  </button>
+                                  <button
+                                    onClick={() => navigate(`/property/${p.id}`)}
+                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-sm font-body font-medium transition-all duration-200"
+                                  >
+                                    <Eye size={14} />
+                                    Просмотр
+                                  </button>
+                                  <button
+                                    onClick={async () => {
+                                      if (!confirm('Удалить объект?')) return;
+                                      await supabase.from('properties').delete().eq('id', p.id);
+                                      fetchMyProperties();
+                                    }}
+                                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-red-500/20 border border-white/10 text-white/30 hover:text-red-400 text-sm font-body font-medium transition-all duration-200 ml-auto"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* ═══════ BOOKINGS ═══════ */}

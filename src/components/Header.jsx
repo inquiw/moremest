@@ -27,7 +27,9 @@ const Header = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
-    return () => subscription.unsubscribe();
+    const handleOpenAuth = () => setAuthOpen(true);
+    window.addEventListener('open-auth', handleOpenAuth);
+    return () => { subscription.unsubscribe(); window.removeEventListener('open-auth', handleOpenAuth); };
   }, []);
 
   const handleAuth = async () => {
@@ -101,13 +103,13 @@ const Header = () => {
         {/* Center Nav - Desktop */}
         <nav className="hidden lg:flex items-center gap-8 xl:gap-10">
           {navItems.map((item) => (
-            <a
+            <button
               key={item}
-              href="#"
+              onClick={() => item === 'Для хозяев' ? navigate('/hosts') : null}
               className="text-white text-[15px] font-body font-medium hover:text-white/70 transition-colors duration-300"
             >
               {item}
-            </a>
+            </button>
           ))}
         </nav>
 
@@ -183,14 +185,13 @@ const Header = () => {
       }`}>
         <nav className="flex flex-col gap-1 px-4 sm:px-6 pb-6 pt-2">
           {navItems.map((item) => (
-            <a
+            <button
               key={item}
-              href="#"
-              className="text-white/90 text-lg font-body font-medium py-3 px-4 rounded-xl hover:bg-white/10 transition-colors duration-200"
-              onClick={() => setMobileOpen(false)}
+              onClick={() => { setMobileOpen(false); if (item === 'Для хозяев') navigate('/hosts'); }}
+              className="text-white/90 text-lg font-body font-medium py-3 px-4 rounded-xl hover:bg-white/10 transition-colors duration-200 w-full text-left"
             >
               {item}
-            </a>
+            </button>
           ))}
           <div className="flex items-center gap-4 px-4 pt-4 border-t border-white/10 mt-2">
             <button onClick={() => { setLang(lang === 'ru' ? 'en' : 'ru'); setMobileOpen(false); }} className="flex items-center gap-1.5 text-white/60 hover:text-white transition-colors">

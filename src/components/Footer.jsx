@@ -96,6 +96,9 @@ const Footer = () => {
           </p>
           <div className="flex items-center gap-6">
             <a href="#" className="text-white/30 text-[11px] sm:text-[13px] font-body hover:text-white/60 transition-colors">
+              Публичная оферта
+            </a>
+            <a href="#" className="text-white/30 text-[11px] sm:text-[13px] font-body hover:text-white/60 transition-colors">
               Конфиденциальность
             </a>
             <a href="#" className="text-white/30 text-[11px] sm:text-[13px] font-body hover:text-white/60 transition-colors">
