@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   User, Mail, LogOut, Calendar, Heart, Settings, Phone, Home,
   Star, MessageSquare, CreditCard, Gift, Headphones, ChevronRight,
@@ -9,6 +9,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabaseClient';
 import Header from '../components/Header';
+import { useFavorites } from '../hooks/useFavorites';
 
 /* ─── Mock data ─── */
 const UPCOMING_TRIP = {
@@ -39,27 +40,17 @@ const MOCK_REVIEWS = [
   { id: 3, property: 'Домик в сосновом бору', text: 'Идеально для уединённого отдыха. Тишина, свежий воздух, камина хватает.', rating: 5, date: '10 ноября 2024' },
 ];
 
-const MOCK_MESSAGES = [
-  { id: 1, from: 'Владелец: Вилла у моря', text: 'Добрый день! Заселение с 14:00. Код от ворот пришлю за день.', time: '2 ч назад', unread: true },
-  { id: 2, from: 'Поддержка Moremest', text: 'Ваш отзыв опубликован. Спасибо за обратную связь!', time: '1 день', unread: false },
-  { id: 3, from: 'Владелец: Горное шале', text: 'Рады, что вам понравилось! Приезжайте ещё — скидка для постоянных гостей.', time: '3 дня', unread: false },
-];
-
 const MOCK_PAYMENTS = [
   { id: 1, type: 'card', label: 'Visa •••• 4242', expiry: '08/27', isDefault: true },
   { id: 2, type: 'card', label: 'Mastercard •••• 8910', expiry: '12/26', isDefault: false },
 ];
 
 const SIDEBAR_NAV = [
-  { key: 'home', label: 'Главная', icon: Home },
   { key: 'myproperties', label: 'Мои объекты', icon: Building2 },
-  { key: 'bookings', label: 'Мои бронирования', icon: Calendar },
-  { key: 'favorites', label: 'Избранное', icon: Heart },
-  { key: 'reviews', label: 'Отзывы', icon: Star },
   { key: 'messages', label: 'Сообщения', icon: MessageSquare },
+  { key: 'reviews', label: 'Отзывы', icon: Star },
+  { key: 'favorites', label: 'Избранное', icon: Heart },
   { key: 'settings', label: 'Настройки профиля', icon: Settings },
-  { key: 'payment', label: 'Способы оплаты', icon: CreditCard },
-  { key: 'invite', label: 'Пригласить друзей', icon: Gift },
 ];
 
 const CARD = 'bg-white/5 border border-white/10 rounded-3xl backdrop-blur-md';
@@ -68,9 +59,10 @@ const CARD_P = 'p-5';
 /* ─── Profile Page ─── */
 const Profile = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeNav, setActiveNav] = useState('home');
+  const [activeNav, setActiveNav] = useState(searchParams.get('tab') || 'myproperties');
   const [openFavorites, setOpenFavorites] = useState(false);
   const [openBookings, setOpenBookings] = useState(false);
   const [showPw, setShowPw] = useState(false);
@@ -90,6 +82,30 @@ const Profile = () => {
   const [savingEdit, setSavingEdit] = useState(false);
   const [editPhotos, setEditPhotos] = useState([]);
   const [uploadingEditPhotos, setUploadingEditPhotos] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const { isFavorite, toggleFavorite, getFavoriteProperties } = useFavorites();
+  const [favProperties, setFavProperties] = useState([]);
+  const [loadingFavs, setLoadingFavs] = useState(false);
+  const [chats, setChats] = useState([]);
+  const [loadingChats, setLoadingChats] = useState(false);
+  const [openChatId, setOpenChatId] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInfo, setChatInfo] = useState(null);
+  const [chatInput, setChatInput] = useState('');
+  const [chatSending, setChatSending] = useState(false);
+  const chatChannelRef = React.useRef(null);
+  const chatBottomRef = React.useRef(null);
+
+  // Read chat param from URL for direct links
+  useEffect(() => {
+    const chatParam = searchParams.get('chat');
+    if (chatParam && activeNav === 'messages' && user && !openChatId) {
+      openChat(chatParam);
+    }
+  }, [searchParams, activeNav, user]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -123,13 +139,13 @@ const Profile = () => {
     }
   };
 
-  const TYPE_LABELS = { apartment: 'Квартира', house: 'Дом / Вилла', hotel: 'Отель', guesthouse: 'Гостевой дом', room: 'Номер в гостинице', 'Квартира': 'Квартира', 'Дом / Вилла': 'Дом / Вилла', 'Отель': 'Отель', 'Гостиница': 'Гостевой дом', 'Гостевой дом': 'Гостевой дом' };
+  const TYPE_LABELS = { apartment: 'Квартира', house: 'Дом', mini_hotel: 'Гостиница', hotel: 'Гостиница', large_hotel: 'Отель', 'Квартира': 'Квартира', 'Дом / Вилла': 'Дом', 'Отель': 'Отель', 'Гостиница': 'Гостиница', 'Гостевой дом': 'Гостиница', 'Мини-гостиница': 'Гостиница', 'Квартира / Дом': 'Квартира', 'Крупный отель': 'Отель' };
 
   const OBJECT_TYPE_OPTIONS = [
-    { value: 'Квартира', label: 'Квартира' },
-    { value: 'Дом / Вилла', label: 'Дом / Вилла' },
-    { value: 'Номер в гостинице', label: 'Номер в гостинице' },
-    { value: 'Гостевой дом', label: 'Гостевой дом' },
+    { value: 'apartment', label: 'Квартира', sub: '1 объект размещения' },
+    { value: 'house', label: 'Дом', sub: '1 объект размещения' },
+    { value: 'hotel', label: 'Гостиница', sub: '2–10 номеров' },
+    { value: 'large_hotel', label: 'Отель', sub: '11+ номеров' },
   ];
 
   const LEGAL_STATUS_OPTIONS = [
@@ -162,15 +178,24 @@ const Profile = () => {
     const addrParts = (p.address || '').split(',').map(s => s.trim());
     const streetVal = addrParts.length > 1 ? addrParts.slice(0, -1).join(', ') : addrParts[0] || '';
     const houseVal = addrParts.length > 1 ? addrParts[addrParts.length - 1] : '';
+    const TYPE_REVERSE = {
+      'Квартира / Дом': 'apartment', 'Квартира': 'apartment', apartment: 'apartment',
+      'Дом / Вилла': 'house', 'Дом': 'house', house: 'house',
+      'Мини-гостиница': 'hotel', 'Мини гостиница': 'hotel', 'Гостевой дом': 'hotel', guesthouse: 'hotel', room: 'hotel', mini_hotel: 'hotel',
+      'Гостиница': 'hotel', hotel: 'hotel',
+      'Крупный отель': 'large_hotel', 'Отель': 'large_hotel', large_hotel: 'large_hotel',
+    };
+    const typeVal = OBJECT_TYPE_OPTIONS.find(o => o.label === p.type)?.value || TYPE_REVERSE[p.type] || p.type;
     setEditingId(p.id);
     setEditForm({
       name: p.name || '',
       description: p.description || '',
-      type: p.type || '',
+      type: typeVal,
       city: p.city || '',
       street: streetVal,
       house: houseVal,
       rooms: p.rooms?.toString() || '',
+      guests: p.guests?.toString() || '',
       price: p.price?.toString() || '',
       phone: p.owner_phone || '',
       amenities: p.amenities || [],
@@ -194,10 +219,11 @@ const Profile = () => {
         .update({
           name: editForm.name,
           description: editForm.description,
-          type: editForm.type,
+          type: OBJECT_TYPE_OPTIONS.find(o => o.value === editForm.type)?.label || editForm.type,
           city: editForm.city,
           address: [editForm.street, editForm.house].filter(Boolean).join(', '),
           rooms: Number(editForm.rooms) || 1,
+          guests: Number(editForm.guests) || 1,
           price: Number(editForm.price) || 0,
           owner_phone: editForm.phone,
           amenities: editForm.amenities,
@@ -279,9 +305,154 @@ const Profile = () => {
     }
   };
 
+  const fetchChats = async () => {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase
+        .from('chats')
+        .select(`
+          id, property_id, host_id, guest_id, created_at,
+          properties(name, img, images, city, address)
+        `)
+        .or(`host_id.eq.${user.id},guest_id.eq.${user.id}`)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      // Fetch last message + unread count for each chat
+      const chatsWithMeta = await Promise.all((data || []).map(async (c) => {
+        const { data: msgs } = await supabase
+          .from('messages')
+          .select('id, content, sender_id, created_at, is_read')
+          .eq('chat_id', c.id)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        const { count } = await supabase
+          .from('messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('chat_id', c.id)
+          .eq('is_read', false)
+          .neq('sender_id', user.id);
+
+        return {
+          ...c,
+          last_message: msgs?.[0] || null,
+          unread_count: count || 0,
+        };
+      }));
+
+      setChats(chatsWithMeta);
+    } catch (err) {
+      console.error('Error fetching chats:', err.message);
+    } finally {
+      setLoadingChats(false);
+    }
+  };
+
+  // Open a chat — load messages + realtime
+  const openChat = async (chatId) => {
+    setOpenChatId(chatId);
+
+    // Fetch chat info
+    const { data: ci } = await supabase
+      .from('chats')
+      .select('*, properties(name, img, images, city, address, owner_name, price, type, user_id)')
+      .eq('id', chatId)
+      .single();
+    setChatInfo(ci);
+
+    // Fetch messages
+    const { data: msgs } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('chat_id', chatId)
+      .order('created_at', { ascending: true });
+    setChatMessages(msgs || []);
+
+    // Mark unread as read + refresh chat list
+    if (user && msgs) {
+      const unreadIds = msgs.filter(m => !m.is_read && m.sender_id !== user.id).map(m => m.id);
+      if (unreadIds.length) {
+        await supabase.from('messages').update({ is_read: true }).in('id', unreadIds);
+        fetchChats(); // refresh unread counts
+      }
+    }
+
+    setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 150);
+  };
+
+  // Realtime for open chat
+  useEffect(() => {
+    if (!openChatId) return;
+
+    // Cleanup previous channel
+    if (chatChannelRef.current) {
+      supabase.removeChannel(chatChannelRef.current);
+      chatChannelRef.current = null;
+    }
+
+    const ch = supabase
+      .channel(`msg:${openChatId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `chat_id=eq.${openChatId}` }, (p) => {
+        setChatMessages(prev => prev.some(m => m.id === p.new.id) ? prev : [...prev, p.new]);
+        setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+      })
+      .subscribe();
+    chatChannelRef.current = ch;
+
+    return () => {
+      if (chatChannelRef.current) {
+        supabase.removeChannel(chatChannelRef.current);
+        chatChannelRef.current = null;
+      }
+    };
+  }, [openChatId]);
+
+  // Send message
+  const handleChatSend = async (e) => {
+    e.preventDefault();
+    const t = chatInput.trim();
+    if (!t || !user || chatSending || !openChatId) return;
+    setChatSending(true);
+    setChatInput('');
+    await supabase.from('messages').insert({ chat_id: openChatId, sender_id: user.id, content: t });
+    setChatSending(false);
+    // Refresh chat list
+    fetchChats();
+  };
+
+  const closeChat = () => {
+    setOpenChatId(null);
+    setChatMessages([]);
+    setChatInfo(null);
+    if (chatChannelRef.current) {
+      supabase.removeChannel(chatChannelRef.current);
+      chatChannelRef.current = null;
+    }
+    fetchChats();
+  };
+
   useEffect(() => {
     if (activeNav === 'myproperties' && user) {
       fetchMyProperties();
+    }
+    if (activeNav === 'favorites' && user) {
+      setLoadingFavs(true);
+      getFavoriteProperties().then((data) => {
+        setFavProperties(data);
+        setLoadingFavs(false);
+      });
+    }
+    if (activeNav === 'messages' && user) {
+      setLoadingChats(true);
+      fetchChats();
+      // Auto-open chat from URL
+      const chatParam = searchParams.get('chat');
+      if (chatParam) setOpenChatId(chatParam);
+    }
+    if (activeNav !== 'messages') {
+      setOpenChatId(null);
     }
   }, [activeNav, user]);
 
@@ -305,27 +476,38 @@ const Profile = () => {
       <Header />
 
       <div className="pt-28 sm:pt-32 pb-16 px-4 sm:px-6">
-        <div className="max-w-7xl mx-auto">
-          {/* Welcome - full width above sidebar+content */}
-          <div className="mb-6">
-            <h1 className="text-2xl sm:text-3xl font-display font-semibold text-white mb-1">
-              Добро пожаловать, {displayName}!
-            </h1>
-            <p className="text-sm font-body text-white/60">Управляйте своими бронированиями и настройками</p>
-          </div>
-
-        <div className="flex flex-col lg:flex-row gap-6">
+        <div className="flex flex-col lg:flex-row gap-6 w-full max-w-7xl mx-auto items-start">
 
           {/* ═══════ SIDEBAR ═══════ */}
-          <motion.aside
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-            className="w-full lg:w-72 shrink-0"
-          >
-            <div className="lg:sticky lg:top-28 space-y-4">
-              {/* Profile card */}
-              <div className="bg-white/5 border border-white/10 rounded-3xl backdrop-blur-md p-6">
+          <aside className="w-full lg:w-[280px] shrink-0 lg:sticky lg:top-24">
+            <h1 className="text-2xl sm:text-3xl font-display font-bold text-white mb-4">Личный кабинет</h1>
+
+            {/* Mobile: horizontal tab bar */}
+            <div className="lg:hidden flex gap-2 overflow-x-auto pb-2 -mb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              {SIDEBAR_NAV.map(item => {
+                const Icon = item.icon;
+                const isActive = activeNav === item.key;
+                return (
+                  <button
+                    key={item.key}
+                    onClick={() => setActiveNav(item.key)}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-body font-medium transition-all duration-200 whitespace-nowrap shrink-0 ${
+                      isActive
+                        ? 'bg-ocean-500/15 text-ocean-400 border border-ocean-500/20'
+                        : 'bg-white/5 text-white/60 border border-white/10'
+                    }`}
+                  >
+                    <Icon size={16} strokeWidth={1.5} />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Desktop: full sidebar card */}
+            <div className="hidden lg:flex bg-white/5 border border-white/10 backdrop-blur-md rounded-3xl p-6 flex-col">
+              {/* Profile info + Navigation */}
+              <div>
                 <div className="flex items-center gap-4 mb-5">
                   <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center shrink-0">
                     <User size={22} className="text-white/70" strokeWidth={1.5} />
@@ -341,7 +523,6 @@ const Profile = () => {
                   </div>
                 </div>
 
-                {/* Navigation */}
                 <nav className="space-y-1">
                   {SIDEBAR_NAV.map(item => {
                     const Icon = item.icon;
@@ -362,9 +543,20 @@ const Profile = () => {
                     );
                   })}
                 </nav>
+              </div>
 
-                {/* Divider + Logout */}
-                <div className="border-t border-white/5 mt-4 pt-4">
+              {/* Bottom: Help + Logout — pushed to bottom via mt-auto */}
+              <div className="mt-auto space-y-3 pt-6">
+                <div className="bg-ocean-500/10 border border-ocean-500/15 rounded-xl p-3.5 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-ocean-500/20 flex items-center justify-center shrink-0">
+                    <Headphones size={16} className="text-ocean-400" strokeWidth={1.5} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-body font-semibold text-white/80">Нужна помощь?</p>
+                    <p className="text-[10px] font-body text-white/40">Мы на связи 24/7</p>
+                  </div>
+                </div>
+                <div className="border-t border-white/5 pt-3">
                   <button
                     onClick={handleLogout}
                     className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-body font-medium text-white/60 hover:text-white hover:bg-white/5 border border-transparent transition-all duration-200"
@@ -374,27 +566,30 @@ const Profile = () => {
                   </button>
                 </div>
               </div>
-
-              {/* Help card - aligned with content below */}
-              <div className="bg-white/5 border border-white/10 rounded-3xl backdrop-blur-md p-5">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-xl bg-ocean-500/15 flex items-center justify-center">
-                    <Headphones size={18} className="text-ocean-400" strokeWidth={1.5} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-body font-semibold text-white/90">Нужна помощь?</p>
-                    <p className="text-xs font-body text-white/50">Мы на связи 24/7</p>
-                  </div>
-                </div>
-                <button className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white text-xs font-body font-medium transition-all duration-200">
-                  Связаться с нами
-                </button>
-              </div>
             </div>
-          </motion.aside>
+          </aside>
 
           {/* ═══════ MAIN CONTENT ═══════ */}
-          <div className="flex-1 min-w-0">
+          <main className="flex-1 min-w-0">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl sm:text-3xl font-display font-bold text-white">
+                {activeNav === 'myproperties' ? 'Мои объекты' :
+                 activeNav === 'messages' ? 'Сообщения' :
+                 activeNav === 'reviews' ? 'Отзывы' :
+                 activeNav === 'favorites' ? 'Избранное' :
+                 activeNav === 'settings' ? 'Настройки профиля' : ''}
+              </h2>
+              {activeNav === 'myproperties' && (
+                <button
+                  onClick={() => navigate('/add-property')}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-ocean-500 hover:bg-ocean-400 text-white text-sm font-body font-semibold shadow-lg shadow-ocean-500/20 transition-all duration-300 active:scale-[0.97]"
+                >
+                  <Plus size={16} />
+                  Добавить
+                </button>
+              )}
+            </div>
+            <div className="bg-white/5 border border-white/10 backdrop-blur-md rounded-3xl p-6">
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeNav}
@@ -405,169 +600,9 @@ const Profile = () => {
                 className="space-y-6"
               >
 
-              {/* ═══════ HOME ═══════ */}
-              {activeNav === 'home' && (
-                <>
-                  <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-                    <div className="xl:col-span-8 space-y-6">
-                      {/* Upcoming trip */}
-                      <div className={`${CARD} overflow-hidden`}>
-                        <div className="p-5 pb-3">
-                          <h2 className="text-base font-body font-semibold text-white">Предстоящая поездка</h2>
-                        </div>
-                        <div className="flex flex-col md:flex-row">
-                          <div className="relative w-full md:w-[45%] h-48 md:h-auto shrink-0">
-                            <img src={UPCOMING_TRIP.img} alt={UPCOMING_TRIP.name} className="w-full h-full object-cover" />
-                            <span className="absolute top-3 left-3 flex items-center gap-1.5 text-xs font-body font-semibold text-white bg-ocean-700/30 backdrop-blur-xl px-3 py-1.5 rounded-full border border-white/20">
-                              <Clock size={12} />Через {UPCOMING_TRIP.daysLeft} дней
-                            </span>
-                          </div>
-                          <div className="flex-1 p-6 flex flex-col justify-between">
-                            <div>
-                              <h3 className="text-lg font-display font-semibold text-white mb-1">{UPCOMING_TRIP.name}</h3>
-                              <div className="flex items-center gap-1.5 mb-3">
-                                <MapPin size={14} className="text-white/50" />
-                                <span className="text-sm font-body text-white/60">{UPCOMING_TRIP.location}</span>
-                              </div>
-                              <div className="flex flex-wrap items-center gap-4 text-sm font-body text-white/70">
-                                <span className="flex items-center gap-1.5"><Calendar size={14} />{UPCOMING_TRIP.dates}</span>
-                                <span className="flex items-center gap-1.5"><User size={14} />{UPCOMING_TRIP.guests} гостя</span>
-                              </div>
-                            </div>
-                            <p className="text-lg font-display font-bold text-white mt-4">{UPCOMING_TRIP.price}</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Favorites collapsible */}
-                      <div className={`${CARD} overflow-hidden`}>
-                        <button onClick={() => setOpenFavorites(!openFavorites)} className="w-full flex items-center justify-between p-5 hover:bg-white/[0.03] transition-colors duration-200">
-                          <div className="flex items-center gap-3">
-                            <Heart size={18} className="text-rose-400" strokeWidth={1.5} />
-                            <h2 className="text-base font-body font-semibold text-white">Избранное</h2>
-                            <span className="text-xs font-body text-white/40">{FAVORITES.length}</span>
-                          </div>
-                          <ChevronRight size={18} className={`text-white/40 transition-transform duration-300 ${openFavorites ? 'rotate-90' : ''}`} />
-                        </button>
-                        <AnimatePresence>
-                          {openFavorites && (
-                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} className="overflow-hidden">
-                              <div className="px-5 pb-5 space-y-3">
-                                {FAVORITES.map(f => (
-                                  <div key={f.id} className="flex gap-4 p-3 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] transition-colors duration-200 cursor-pointer group">
-                                    <div className="relative w-32 h-24 rounded-xl overflow-hidden shrink-0">
-                                      <img src={f.img} alt={f.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                                      <span className="absolute top-2 left-2 px-2.5 py-1 rounded-full bg-ocean-700/30 backdrop-blur-xl border border-white/20 text-[10px] font-body font-semibold text-white">{f.type}</span>
-                                    </div>
-                                    <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
-                                      <div>
-                                        <h4 className="text-sm font-body font-semibold text-white truncate">{f.name}</h4>
-                                        <p className="text-xs font-body text-white/50 mt-0.5">{f.location}</p>
-                                      </div>
-                                      <div className="flex items-center justify-between mt-2">
-                                        <div className="flex items-center gap-1.5">
-                                          <Star size={13} className="text-amber-400 fill-amber-400" />
-                                          <span className="text-xs font-body font-medium text-white">{f.rating}</span>
-                                          <span className="text-[11px] font-body text-white/40">({f.reviews})</span>
-                                        </div>
-                                        <p className="text-sm font-display font-bold text-white">{f.price}<span className="text-white/40 font-body font-normal text-xs"> / ночь</span></p>
-                                      </div>
-                                    </div>
-                                    <button className="self-start shrink-0 w-9 h-9 rounded-full bg-ocean-700/30 backdrop-blur-xl border border-white/20 flex items-center justify-center hover:bg-ocean-700/50 transition-colors">
-                                      <Heart size={15} className="text-rose-400 fill-rose-400" />
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-
-                      {/* Past bookings collapsible */}
-                      <div className={`${CARD} overflow-hidden`}>
-                        <button onClick={() => setOpenBookings(!openBookings)} className="w-full flex items-center justify-between p-5 hover:bg-white/[0.03] transition-colors duration-200">
-                          <div className="flex items-center gap-3">
-                            <Calendar size={18} className="text-ocean-400" strokeWidth={1.5} />
-                            <h2 className="text-base font-body font-semibold text-white">История бронирований</h2>
-                            <span className="text-xs font-body text-white/40">{PAST_BOOKINGS.length}</span>
-                          </div>
-                          <ChevronRight size={18} className={`text-white/40 transition-transform duration-300 ${openBookings ? 'rotate-90' : ''}`} />
-                        </button>
-                        <AnimatePresence>
-                          {openBookings && (
-                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} className="overflow-hidden">
-                              <div className="px-5 pb-5 space-y-3">
-                                {PAST_BOOKINGS.map(b => (
-                                  <div key={b.id} className="flex items-center gap-4 p-3 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] transition-colors duration-200">
-                                    <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0">
-                                      <img src={b.img} alt={b.name} className="w-full h-full object-cover" />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <h4 className="text-sm font-body font-semibold text-white truncate">{b.name}</h4>
-                                      <p className="text-xs font-body text-white/50">{b.location} · {b.dates}</p>
-                                    </div>
-                                    <div className="text-right shrink-0">
-                                      <p className="text-sm font-body font-semibold text-white">{b.price}</p>
-                                      <span className="inline-flex items-center gap-1 text-[11px] font-body text-emerald-400/70"><CheckCircle2 size={10} />{b.status}</span>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                    </div>
-                    <div className="xl:col-span-4 space-y-6">
-                      {/* Profile completeness */}
-                      <div className={`${CARD} ${CARD_P}`}>
-                        <div className="flex items-center gap-3 mb-4">
-                          <div className="w-10 h-10 rounded-xl bg-amber-500/15 flex items-center justify-center">
-                            <TrendingUp size={18} className="text-amber-400" strokeWidth={1.5} />
-                          </div>
-                          <div>
-                            <h3 className="text-sm font-body font-semibold text-white/90">Заполненность профиля</h3>
-                            <p className="text-xs font-body text-white/50">Добавьте данные для доверия</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3 mb-4">
-                          <span className="text-3xl font-display font-bold text-white">80%</span>
-                          <div className="flex-1 h-2.5 rounded-full bg-white/10 overflow-hidden">
-                            <div className="h-full w-4/5 rounded-full bg-gradient-to-r from-ocean-500 to-ocean-400" />
-                          </div>
-                        </div>
-                        <button onClick={() => setActiveNav('settings')} className="w-full py-2.5 rounded-xl bg-ocean-500 hover:bg-ocean-400 text-white text-xs font-body font-semibold shadow-lg shadow-ocean-500/20 transition-all duration-300 active:scale-[0.98]">Заполнить профиль</button>
-                      </div>
-                      {/* Invite friends */}
-                      <div className="bg-gradient-to-br from-ocean-500/15 to-purple-500/10 border border-ocean-500/20 rounded-3xl backdrop-blur-md p-5 flex items-center justify-between">
-                        <div>
-                          <h3 className="text-sm font-body font-semibold text-white mb-1">Пригласите друзей</h3>
-                          <p className="text-xs font-body text-white/50 mb-3">Получите скидку 10%</p>
-                          <button onClick={() => setActiveNav('invite')} className="px-6 py-2 rounded-xl bg-white text-black text-xs font-body font-medium hover:bg-white/90 transition-all duration-200">Пригласить</button>
-                        </div>
-                        <div className="w-12 h-12 rounded-2xl bg-ocean-500/20 flex items-center justify-center shrink-0">
-                          <Gift size={22} className="text-ocean-400" strokeWidth={1.5} />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
-
               {/* ═══════ MY PROPERTIES ═══════ */}
               {activeNav === 'myproperties' && (
                 <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-xl font-display font-semibold text-white">Мои объекты</h2>
-                    <button
-                      onClick={() => navigate('/add-property')}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-ocean-500 hover:bg-ocean-400 text-white text-sm font-body font-semibold shadow-lg shadow-ocean-500/20 transition-all duration-300 active:scale-[0.97]"
-                    >
-                      <Plus size={16} />
-                      Добавить
-                    </button>
-                  </div>
 
                   {loadingProps ? (
                     <div className="flex justify-center py-12">
@@ -594,18 +629,18 @@ const Profile = () => {
                           {editingId === p.id ? (
                             /* ── РЕЖИМ РЕДАКТИРОВАНИЯ ── */
                             <div className="p-5 sm:p-6 space-y-5">
-                              <div className="flex items-center justify-between">
-                                <h3 className="text-base font-body font-semibold text-white">Редактирование</h3>
-                                <div className="flex items-center gap-2">
-                                  <button onClick={cancelEdit} className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-xs font-body font-medium transition-all">Отмена</button>
-                                  <button
-                                    onClick={() => saveEdit(p.id)}
-                                    disabled={savingEdit}
-                                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-ocean-500 hover:bg-ocean-400 text-white text-xs font-body font-semibold transition-all disabled:opacity-50"
-                                  >
-                                    <Save size={13} />
-                                    {savingEdit ? 'Сохранение...' : 'Сохранить'}
-                                  </button>
+                                <div className="flex items-center justify-between">
+                                  <h3 className="text-lg font-body font-semibold text-white">Редактирование</h3>
+                                  <div className="flex items-center gap-3">
+                                    <button onClick={cancelEdit} className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-sm font-body font-medium transition-all">Отмена</button>
+                                    <button
+                                      onClick={() => saveEdit(p.id)}
+                                      disabled={savingEdit || (() => { const r = Number(editForm.rooms); const ranges = { apartment: [1,1], house: [1,1], hotel: [2,10], large_hotel: [11,999] }; const range = ranges[editForm.type]; return range && editForm.rooms && (r < range[0] || r > range[1]); })()}
+                                      className="flex items-center gap-2 px-5 py-2 rounded-lg bg-ocean-500 hover:bg-ocean-400 text-white text-sm font-body font-semibold transition-all disabled:opacity-50"
+                                    >
+                                      <Save size={15} />
+                                      {savingEdit ? 'Сохранение...' : 'Сохранить'}
+                                    </button>
                                 </div>
                               </div>
 
@@ -647,34 +682,58 @@ const Profile = () => {
                                         key={o.value}
                                         type="button"
                                         onClick={() => setEditForm({...editForm, type: o.value})}
-                                        className={`px-3 py-2 rounded-xl text-xs font-body transition-all duration-200 ${editForm.type === o.value ? 'bg-ocean-500/20 border border-ocean-500/40 text-white' : 'bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10'}`}
+                                        className={`flex flex-col items-center gap-1 px-3 py-2.5 rounded-xl text-xs font-body transition-all duration-200 ${editForm.type === o.value ? 'bg-ocean-500/20 border border-ocean-500/40 text-white' : 'bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10'}`}
                                       >
-                                        {o.label}
+                                        <span className="font-medium">{o.label}</span>
+                                        <span className="text-[10px] text-white/30">{o.sub}</span>
                                       </button>
                                     ))}
                                   </div>
                                 </div>
                                 <div>
                                   <label className="text-white/50 font-body text-xs mb-1 block">Город</label>
-                                  <input value={editForm.city} onChange={(e) => setEditForm({...editForm, city: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm font-body text-white placeholder-white/30 focus:outline-none focus:border-ocean-500/50 transition-colors" />
+                                  <input value={editForm.city} onChange={(e) => {
+                                    let val = e.target.value;
+                                    if (val.length > 0 && !val.startsWith('г. ')) val = 'г. ' + val.replace(/^[гГ][.\s]*/, '');
+                                    setEditForm({...editForm, city: val});
+                                  }} placeholder="г. Геленджик" className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm font-body text-white placeholder-white/30 focus:outline-none focus:border-ocean-500/50 transition-colors" />
                                 </div>
                                 <div className="grid grid-cols-3 gap-2">
                                   <div className="col-span-2">
                                     <label className="text-white/50 font-body text-xs mb-1 block">Улица</label>
-                                    <input value={editForm.street || ''} onChange={(e) => setEditForm({...editForm, street: e.target.value})} placeholder="ул. Ленина" className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm font-body text-white placeholder-white/30 focus:outline-none focus:border-ocean-500/50 transition-colors" />
+                                    <input value={editForm.street || ''} onChange={(e) => {
+                                      let val = e.target.value;
+                                      if (val.length > 0 && !val.startsWith('ул. ')) val = 'ул. ' + val.replace(/^[уУ][лЛ][.\s]*/, '');
+                                      setEditForm({...editForm, street: val});
+                                    }} placeholder="ул. Ленина" className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm font-body text-white placeholder-white/30 focus:outline-none focus:border-ocean-500/50 transition-colors" />
                                   </div>
                                   <div>
                                     <label className="text-white/50 font-body text-xs mb-1 block">Дом</label>
                                     <input value={editForm.house || ''} onChange={(e) => setEditForm({...editForm, house: e.target.value})} placeholder="15" className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm font-body text-white placeholder-white/30 focus:outline-none focus:border-ocean-500/50 transition-colors" />
                                   </div>
                                 </div>
-                                <div>
-                                  <label className="text-white/50 font-body text-xs mb-1 block">Комнат</label>
-                                  <input type="number" min="1" value={editForm.rooms} onChange={(e) => setEditForm({...editForm, rooms: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm font-body text-white placeholder-white/30 focus:outline-none focus:border-ocean-500/50 transition-colors" />
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <label className="text-white/50 font-body text-xs mb-1 block">Количество номеров</label>
+                                    <input type="text" inputMode="numeric" value={editForm.rooms} onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ''); setEditForm({...editForm, rooms: v}); }} placeholder="Номеров" className={`w-full bg-white/5 border rounded-xl px-3 py-2.5 text-sm font-body text-white placeholder-white/30 focus:outline-none transition-colors ${(() => { const r = Number(editForm.rooms); if (!editForm.type || !editForm.rooms) return 'border-white/10 focus:border-ocean-500/50'; if ((editForm.type === 'apartment' || editForm.type === 'house') && r !== 1) return 'border-red-500/50 focus:border-red-500/70'; if (editForm.type === 'hotel' && (r < 2 || r > 10)) return 'border-red-500/50 focus:border-red-500/70'; if (editForm.type === 'large_hotel' && r < 11) return 'border-red-500/50 focus:border-red-500/70'; return 'border-white/10 focus:border-ocean-500/50'; })()}`} />
+                                    {(() => {
+                                      const r = Number(editForm.rooms);
+                                      const ranges = { apartment: [1,1], house: [1,1], hotel: [2,10], large_hotel: [11,999] };
+                                      const range = ranges[editForm.type];
+                                      if (range && editForm.rooms && (r < range[0] || r > range[1])) {
+                                        return <p className="text-red-400/70 text-[10px] font-body mt-1">Для «{OBJECT_TYPE_OPTIONS.find(o => o.value === editForm.type)?.label}» допустимо {range[0]}{range[1] < 999 ? `–${range[1]}` : '+'} номер{range[0] === 1 && range[1] === 1 ? '' : 'ов'}</p>;
+                                      }
+                                      return null;
+                                    })()}
+                                  </div>
+                                  <div>
+                                    <label className="text-white/50 font-body text-xs mb-1 block">Гостей на номер</label>
+                                    <input type="text" inputMode="numeric" value={editForm.guests || ''} onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ''); setEditForm({...editForm, guests: v}); }} placeholder="Макс. гостей" className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm font-body text-white placeholder-white/30 focus:outline-none focus:border-ocean-500/50 transition-colors" />
+                                  </div>
                                 </div>
                                 <div>
                                   <label className="text-white/50 font-body text-xs mb-1 block">Цена ₽/ночь</label>
-                                  <input type="number" min="1" value={editForm.price} onChange={(e) => setEditForm({...editForm, price: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm font-body text-white placeholder-white/30 focus:outline-none focus:border-ocean-500/50 transition-colors" />
+                                  <input type="text" inputMode="numeric" value={editForm.price} onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ''); setEditForm({...editForm, price: v}); }} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm font-body text-white placeholder-white/30 focus:outline-none focus:border-ocean-500/50 transition-colors" />
                                 </div>
                                 <div>
                                   <label className="text-white/50 font-body text-xs mb-1 block">Телефон</label>
@@ -755,7 +814,7 @@ const Profile = () => {
                                     ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-300'
                                     : 'bg-amber-500/20 border-amber-500/30 text-amber-300'
                                 }`}>
-                                  {p.is_published ? 'Активен' : 'Черновик'}
+                                  {p.is_published ? 'Активен' : 'Архив'}
                                 </span>
                                 <div className="flex items-start justify-between gap-4 mb-3">
                                   <div>
@@ -778,6 +837,8 @@ const Profile = () => {
                                 <div className="flex flex-wrap items-center gap-3 mb-4 text-sm font-body text-white/40">
                                   <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10">{TYPE_LABELS[p.type] || p.type}</span>
                                   <span>{p.rooms} {p.rooms === 1 ? 'комната' : p.rooms < 5 ? 'комнаты' : 'комнат'}</span>
+                                  <span>·</span>
+                                  <span>{p.guests || 1} {p.guests === 1 ? 'гость' : p.guests < 5 ? 'гостя' : 'гостей'}</span>
                                   {p.amenities && p.amenities.length > 0 && (
                                     <>
                                       <span>·</span>
@@ -813,11 +874,7 @@ const Profile = () => {
                                     Просмотр
                                   </button>
                                   <button
-                                    onClick={async () => {
-                                      if (!confirm('Удалить объект?')) return;
-                                      await supabase.from('properties').delete().eq('id', p.id);
-                                      fetchMyProperties();
-                                    }}
+                                    onClick={() => { setDeleteTarget(p.id); setDeletePassword(''); setDeleteError(''); }}
                                     className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-red-500/20 border border-white/10 text-white/30 hover:text-red-400 text-sm font-body font-medium transition-all duration-200 ml-auto"
                                   >
                                     <Trash2 size={14} />
@@ -833,94 +890,9 @@ const Profile = () => {
                 </div>
               )}
 
-              {/* ═══════ BOOKINGS ═══════ */}
-              {activeNav === 'bookings' && (
-                <div className="space-y-6">
-                  <h2 className="text-xl font-display font-semibold text-white">Мои бронирования</h2>
-                  {/* Upcoming */}
-                  <div className={`${CARD} overflow-hidden`}>
-                    <div className="p-5 pb-3"><h3 className="text-base font-body font-semibold text-white">Предстоящая</h3></div>
-                    <div className="flex flex-col md:flex-row">
-                      <div className="relative w-full md:w-[45%] h-48 md:h-auto shrink-0">
-                        <img src={UPCOMING_TRIP.img} alt={UPCOMING_TRIP.name} className="w-full h-full object-cover" />
-                        <span className="absolute top-3 left-3 flex items-center gap-1.5 text-xs font-body font-semibold text-white bg-ocean-700/30 backdrop-blur-xl px-3 py-1.5 rounded-full border border-white/20"><Clock size={12} />Через {UPCOMING_TRIP.daysLeft} дней</span>
-                      </div>
-                      <div className="flex-1 p-6 flex flex-col justify-between">
-                        <div>
-                          <h4 className="text-lg font-display font-semibold text-white mb-1">{UPCOMING_TRIP.name}</h4>
-                          <div className="flex items-center gap-1.5 mb-3"><MapPin size={14} className="text-white/50" /><span className="text-sm font-body text-white/60">{UPCOMING_TRIP.location}</span></div>
-                          <div className="flex flex-wrap items-center gap-4 text-sm font-body text-white/70">
-                            <span className="flex items-center gap-1.5"><Calendar size={14} />{UPCOMING_TRIP.dates}</span>
-                            <span className="flex items-center gap-1.5"><User size={14} />{UPCOMING_TRIP.guests} гостя</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between mt-4">
-                          <p className="text-lg font-display font-bold text-white">{UPCOMING_TRIP.price}</p>
-                          <button className="px-5 py-2 rounded-xl bg-ocean-500 hover:bg-ocean-400 text-white text-xs font-body font-semibold transition-all duration-200">Управлять</button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  {/* Past */}
-                  <div className={`${CARD} ${CARD_P}`}>
-                    <h3 className="text-base font-body font-semibold text-white mb-4">Завершённые</h3>
-                    <div className="space-y-3">
-                      {PAST_BOOKINGS.map(b => (
-                        <div key={b.id} className="flex items-center gap-4 p-3 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] transition-colors duration-200">
-                          <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0"><img src={b.img} alt={b.name} className="w-full h-full object-cover" /></div>
-                          <div className="flex-1 min-w-0">
-                            <h4 className="text-sm font-body font-semibold text-white truncate">{b.name}</h4>
-                            <p className="text-xs font-body text-white/50">{b.location} · {b.dates}</p>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <p className="text-sm font-body font-semibold text-white">{b.price}</p>
-                            <span className="inline-flex items-center gap-1 text-[11px] font-body text-emerald-400/70"><CheckCircle2 size={10} />{b.status}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* ═══════ FAVORITES ═══════ */}
-              {activeNav === 'favorites' && (
-                <div className="space-y-6">
-                  <h2 className="text-xl font-display font-semibold text-white">Избранное</h2>
-                  <div className="space-y-3">
-                    {FAVORITES.map(f => (
-                      <div key={f.id} className={`${CARD} flex gap-4 p-3 hover:bg-white/[0.06] transition-colors duration-200 cursor-pointer group`}>
-                        <div className="relative w-40 h-28 rounded-xl overflow-hidden shrink-0">
-                          <img src={f.img} alt={f.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                          <span className="absolute top-2 left-2 px-2.5 py-1 rounded-full bg-ocean-700/30 backdrop-blur-xl border border-white/20 text-[10px] font-body font-semibold text-white">{f.type}</span>
-                        </div>
-                        <div className="flex-1 min-w-0 flex flex-col justify-between py-1">
-                          <div>
-                            <h4 className="text-base font-body font-semibold text-white truncate">{f.name}</h4>
-                            <p className="text-xs font-body text-white/50 mt-0.5">{f.location}</p>
-                          </div>
-                          <div className="flex items-center justify-between mt-2">
-                            <div className="flex items-center gap-1.5">
-                              <Star size={14} className="text-amber-400 fill-amber-400" />
-                              <span className="text-xs font-body font-medium text-white">{f.rating}</span>
-                              <span className="text-[11px] font-body text-white/40">({f.reviews})</span>
-                            </div>
-                            <p className="text-sm font-display font-bold text-white">{f.price}<span className="text-white/40 font-body font-normal text-xs"> / ночь</span></p>
-                          </div>
-                        </div>
-                        <button className="self-start shrink-0 w-10 h-10 rounded-full bg-ocean-700/30 backdrop-blur-xl border border-white/20 flex items-center justify-center hover:bg-ocean-700/50 transition-colors">
-                          <Heart size={16} className="text-rose-400 fill-rose-400" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* ═══════ REVIEWS ═══════ */}
               {activeNav === 'reviews' && (
                 <div className="space-y-6">
-                  <h2 className="text-xl font-display font-semibold text-white">Мои отзывы</h2>
                   <div className="space-y-4">
                     {MOCK_REVIEWS.map(r => (
                       <div key={r.id} className={`${CARD} ${CARD_P}`}>
@@ -942,32 +914,180 @@ const Profile = () => {
 
               {/* ═══════ MESSAGES ═══════ */}
               {activeNav === 'messages' && (
-                <div className="space-y-6">
-                  <h2 className="text-xl font-display font-semibold text-white">Сообщения</h2>
+                <AnimatePresence mode="wait">
+                {openChatId ? (
+                  /* ─── Inline chat view ─── */
+                  <motion.div
+                    key="chat-open"
+                    initial={{ opacity: 0, x: 30, scale: 0.98 }}
+                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                    exit={{ opacity: 0, x: -20, scale: 0.98, transition: { duration: 0.2 } }}
+                    transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                    className="bg-white/5 border border-white/10 backdrop-blur-md rounded-3xl overflow-hidden flex flex-col"
+                    style={{ minHeight: '70vh' }}
+                  >
+                    {/* Chat header */}
+                    <div className="shrink-0 border-b border-white/10 px-5 py-3 flex items-center gap-3">
+                      <button onClick={closeChat} className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors shrink-0">
+                        <ChevronRight size={16} className="text-white/60 rotate-180" />
+                      </button>
+                      {chatInfo?.properties && (
+                        <>
+                          <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0">
+                            <img
+                              src={chatInfo.properties.images?.[0] || chatInfo.properties.img || '/img/placeholder.jpg'}
+                              alt=""
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-white font-body font-semibold text-sm truncate">{chatInfo.properties.name}</p>
+                            <p className="text-white/40 font-body text-xs truncate">
+                              {chatInfo.properties.city}{chatInfo.properties.address ? `, ${chatInfo.properties.address}` : ''}
+                            </p>
+                          </div>
+                          <div className="hidden sm:flex items-center gap-2 shrink-0">
+                            <span className="px-3.5 py-2 rounded-lg bg-white/10 border border-white/15 text-sm font-body text-white font-bold">
+                              {chatInfo.properties.owner_name || 'Собственник'}
+                            </span>
+                            {chatInfo.properties.price ? (
+                              <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/5 text-[11px] font-body text-white/40">
+                                {Number(chatInfo.properties.price).toLocaleString('ru-RU')} ₽/ночь
+                              </span>
+                            ) : null}
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Messages area */}
+                    <div className="flex-1 overflow-y-auto px-5 py-4" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.08) transparent' }}>
+                      {chatMessages.length === 0 && (
+                        <div className="flex flex-col items-center justify-center py-16 text-center">
+                          <MessageSquare size={28} className="text-white/10 mx-auto mb-3" />
+                          <p className="text-white/25 font-body text-sm">Начните диалог</p>
+                        </div>
+                      )}
+                      <div className="flex flex-col gap-4">
+                      {chatMessages.map((msg, i) => {
+                        const own = msg.sender_id === user?.id;
+                        const prev = i > 0 ? chatMessages[i - 1] : null;
+                        const samePrev = prev && prev.sender_id === msg.sender_id;
+                        const next = i < chatMessages.length - 1 ? chatMessages[i + 1] : null;
+                        const sameNext = next && next.sender_id === msg.sender_id;
+                        const isTail = !sameNext;
+
+                        return (
+                          <motion.div
+                            key={msg.id}
+                            initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                            className={`flex ${own ? 'justify-end' : 'justify-start'}`}
+                          >
+                            <div
+                              className={`relative w-fit max-w-[80%] sm:max-w-[65%] px-4 py-2.5 ${
+                                own
+                                  ? `bg-ocean-500 text-white ${isTail ? 'rounded-[20px] rounded-br-[6px]' : 'rounded-[20px]'}`
+                                  : `bg-white/[0.08] border border-white/[0.06] text-white/90 ${isTail ? 'rounded-[20px] rounded-bl-[6px]' : 'rounded-[20px]'}`
+                              }`}
+                            >
+                              <p className="font-body text-[15px] leading-[1.4] break-words whitespace-pre-wrap">{msg.content}</p>
+                              <span className={`block text-[10px] font-body tabular-nums mt-0.5 ${own ? 'text-white/40' : 'text-white/25'} text-right`}>
+                                {new Date(msg.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                          </motion.div>
+                        );
+                      })}
+                      </div>
+                      <div ref={chatBottomRef} />
+                    </div>
+
+                    {/* Input */}
+                    <div className="shrink-0 border-t border-white/10 px-4 py-3">
+                      <form onSubmit={handleChatSend} className="flex items-center gap-2.5">
+                        <input
+                          type="text"
+                          value={chatInput}
+                          onChange={(e) => setChatInput(e.target.value)}
+                          placeholder="Написать сообщение..."
+                          className="flex-1 bg-white/5 border border-white/10 rounded-full px-5 py-2.5 text-white font-body text-sm placeholder-white/25 focus:outline-none focus:border-ocean-500/40 transition-colors"
+                          disabled={chatSending}
+                        />
+                        <button
+                          type="submit"
+                          disabled={!chatInput.trim() || chatSending}
+                          className="w-10 h-10 rounded-full bg-ocean-500 hover:bg-ocean-400 flex items-center justify-center transition-all duration-200 disabled:opacity-20 shrink-0 active:scale-90"
+                        >
+                          <Send size={16} className="text-white ml-0.5" />
+                        </button>
+                      </form>
+                    </div>
+                  </motion.div>
+                ) : (
+                  /* ─── Chat list ─── */
+                <motion.div
+                  key="chat-list"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20, transition: { duration: 0.2 } }}
+                  transition={{ duration: 0.25 }}
+                  className="space-y-6"
+                >
+                  {loadingChats ? (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="w-8 h-8 border-2 border-ocean-500 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : chats.length === 0 ? (
+                    <div className="text-center py-12">
+                      <MessageSquare size={32} className="text-white/15 mx-auto mb-3" />
+                      <p className="text-white/40 font-body text-sm">Пока нет сообщений</p>
+                      <p className="text-white/25 font-body text-xs mt-1">Напишите хозяину жилья, чтобы начать диалог</p>
+                    </div>
+                  ) : (
                   <div className="space-y-3">
-                    {MOCK_MESSAGES.map(m => (
-                      <div key={m.id} className={`${CARD} ${CARD_P} flex gap-4 items-start cursor-pointer hover:bg-white/[0.06] transition-colors duration-200`}>
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${m.unread ? 'bg-ocean-500/20' : 'bg-white/5'}`}>
-                          <MessageSquare size={18} className={m.unread ? 'text-ocean-400' : 'text-white/40'} strokeWidth={1.5} />
+                    {chats.map(c => (
+                      <div
+                        key={c.id}
+                        onClick={() => openChat(c.id)}
+                        className={`${CARD} ${CARD_P} flex gap-4 items-start cursor-pointer hover:bg-white/[0.06] transition-colors duration-200 group`}
+                      >
+                        <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0">
+                          <img
+                            src={c.properties?.images?.[0] || c.properties?.img || '/img/placeholder.jpg'}
+                            alt=""
+                            className="w-full h-full object-cover"
+                          />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-1">
-                            <h4 className={`text-sm font-body font-semibold truncate ${m.unread ? 'text-white' : 'text-white/70'}`}>{m.from}</h4>
-                            <span className="text-[11px] font-body text-white/30 shrink-0 ml-2">{m.time}</span>
+                            <h4 className="text-sm font-body font-semibold text-white truncate">{c.properties?.name || 'Объект'}</h4>
+                            <span className="text-[11px] font-body text-white/30 shrink-0 ml-2">
+                              {c.last_message?.created_at ? new Date(c.last_message.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : ''}
+                            </span>
                           </div>
-                          <p className={`text-xs font-body truncate ${m.unread ? 'text-white/60' : 'text-white/40'}`}>{m.text}</p>
+                          <p className="text-xs font-body text-white/40 truncate">
+                            {c.last_message?.content || 'Нет сообщений'}
+                          </p>
                         </div>
-                        {m.unread && <div className="w-2.5 h-2.5 rounded-full bg-ocean-500 shrink-0 mt-2" />}
+                        {c.unread_count > 0 && (
+                          <div className="w-5 h-5 rounded-full bg-ocean-500 flex items-center justify-center shrink-0">
+                            <span className="text-[10px] font-body font-bold text-white">{c.unread_count}</span>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
-                </div>
+                  )}
+                </motion.div>
+                )}
+                </AnimatePresence>
               )}
 
               {/* ═══════ SETTINGS ═══════ */}
               {activeNav === 'settings' && (
                 <div className="space-y-6">
-                  <h2 className="text-xl font-display font-semibold text-white">Настройки профиля</h2>
                   {/* Personal info */}
                   <div className={`${CARD} ${CARD_P}`}>
                     <h3 className="text-base font-body font-semibold text-white mb-4">Личные данные</h3>
@@ -1045,74 +1165,158 @@ const Profile = () => {
                 </div>
               )}
 
-              {/* ═══════ PAYMENT ═══════ */}
-              {activeNav === 'payment' && (
+              {/* ═══════ FAVORITES ═══════ */}
+              {activeNav === 'favorites' && (
                 <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-xl font-display font-semibold text-white">Способы оплаты</h2>
-                    <button className="flex items-center gap-2 px-4 py-2 rounded-xl bg-ocean-500 hover:bg-ocean-400 text-white text-xs font-body font-semibold transition-all duration-200">
-                      <Plus size={14} />Добавить карту
-                    </button>
-                  </div>
+                  {loadingFavs ? (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="w-8 h-8 border-2 border-ocean-500 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : favProperties.length === 0 ? (
+                    <div className="text-center py-12">
+                      <Heart size={32} className="text-white/15 mx-auto mb-3" />
+                      <p className="text-white/40 font-body text-sm">Пока ничего в избранном</p>
+                      <p className="text-white/25 font-body text-xs mt-1">Нажмите ♡ на карточке жилья, чтобы добавить</p>
+                    </div>
+                  ) : (
+                  <AnimatePresence mode="popLayout">
                   <div className="space-y-3">
-                    {MOCK_PAYMENTS.map(p => (
-                      <div key={p.id} className={`${CARD} ${CARD_P} flex items-center justify-between`}>
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-8 rounded-lg bg-white/10 flex items-center justify-center">
-                            <CreditCard size={20} className="text-white/50" />
-                          </div>
+                    {favProperties.map(f => (
+                      <motion.div
+                        key={f.id}
+                        layout
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, x: -60, scale: 0.95, transition: { duration: 0.25 } }}
+                        onClick={() => navigate(`/property/${f.id}`)}
+                        className={`${CARD} flex gap-4 p-3 hover:bg-white/[0.06] transition-colors duration-200 cursor-pointer group`}
+                      >
+                        <div className="relative w-40 h-28 rounded-xl overflow-hidden shrink-0">
+                          <img src={f.images?.[0] || f.img || '/img/placeholder.jpg'} alt={f.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                          <span className="absolute top-2 left-2 px-2.5 py-1 rounded-full bg-ocean-700/30 backdrop-blur-xl border border-white/20 text-[10px] font-body font-semibold text-white">{TYPE_LABELS[f.type] || f.type}</span>
+                        </div>
+                        <div className="flex-1 min-w-0 flex flex-col justify-between py-1">
                           <div>
-                            <p className="text-sm font-body font-semibold text-white">{p.label}</p>
-                            <p className="text-xs font-body text-white/40">Истекает {p.expiry}</p>
+                            <h4 className="text-base font-body font-semibold text-white truncate">{f.name}</h4>
+                            <p className="text-xs font-body text-white/50 mt-0.5">{f.city}{f.address ? `, ${f.address}` : ''}</p>
+                          </div>
+                          <div className="flex items-center justify-between mt-2">
+                            <div className="flex items-center gap-1.5">
+                              <Star size={14} className="text-amber-400 fill-amber-400" />
+                              <span className="text-xs font-body font-medium text-white">{f.rating || '—'}</span>
+                            </div>
+                            <p className="text-sm font-display font-bold text-white">{(f.price || 0).toLocaleString('ru-RU')} ₽<span className="text-white/40 font-body font-normal text-xs"> / ночь</span></p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          {p.isDefault && <span className="text-[11px] font-body text-ocean-400 bg-ocean-500/15 px-2.5 py-1 rounded-full">По умолчанию</span>}
-                          <button className="text-white/30 hover:text-rose-400 transition-colors"><Trash2 size={16} /></button>
-                        </div>
-                      </div>
+                        <button onClick={(e) => { e.stopPropagation(); toggleFavorite(f.id).then(() => { getFavoriteProperties().then(setFavProperties); }); }} className="self-start shrink-0 w-10 h-10 rounded-full bg-ocean-700/30 backdrop-blur-xl border border-white/20 flex items-center justify-center hover:bg-ocean-700/50 transition-colors">
+                          <Heart size={16} className="text-rose-400 fill-rose-400" />
+                        </button>
+                      </motion.div>
                     ))}
                   </div>
+                  </AnimatePresence>
+                  )}
                 </div>
               )}
 
-              {/* ═══════ INVITE ═══════ */}
-              {activeNav === 'invite' && (
-                <div className="space-y-6">
-                  <h2 className="text-xl font-display font-semibold text-white">Пригласите друзей</h2>
-                  <div className="bg-gradient-to-br from-ocean-500/15 to-purple-500/10 border border-ocean-500/20 rounded-3xl backdrop-blur-md p-8">
-                    <div className="flex items-center gap-4 mb-6">
-                      <div className="w-16 h-16 rounded-2xl bg-ocean-500/20 flex items-center justify-center">
-                        <Gift size={30} className="text-ocean-400" strokeWidth={1.5} />
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-display font-semibold text-white">Получите скидку 10%</h3>
-                        <p className="text-sm font-body text-white/50">За каждого приглашённого друга</p>
-                      </div>
-                    </div>
-                    <p className="text-sm font-body text-white/70 mb-6 leading-relaxed">Поделитесь ссылкой с друзьями. Когда они зарегистрируются и совершат первое бронирование, вы оба получите скидку 10% на следующую поездку.</p>
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm font-body text-white/60 truncate">
-                        https://moremest.com/ref/{user?.id?.slice(0, 8) || 'abc12345'}
-                      </div>
-                      <button
-                        onClick={() => { navigator.clipboard?.writeText(`https://moremest.com/ref/${user?.id?.slice(0, 8) || 'abc12345'}`); setInviteCopied(true); setTimeout(() => setInviteCopied(false), 2000); }}
-                        className="flex items-center gap-2 px-5 py-3 rounded-xl bg-white text-black text-xs font-body font-medium hover:bg-white/90 transition-all duration-200 shrink-0"
-                      >
-                        <Copy size={14} />{inviteCopied ? 'Скопировано!' : 'Копировать'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              </motion.div>
+            </motion.div>
             </AnimatePresence>
-          </div>
-        </div>
+            </div>
+          </main>
         </div>
       </div>
       </div>
+
+      {/* Модалка удаления */}
+      <AnimatePresence>
+        {deleteTarget && (() => {
+          const prop = myProperties.find(p => p.id === deleteTarget);
+          return (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-md"
+            onClick={() => setDeleteTarget(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-lg mx-4 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-xl p-6 shadow-2xl shadow-black/40"
+            >
+              <h3 className="text-xl font-display font-bold text-white mb-1">
+                {prop?.name || 'Объект'}
+              </h3>
+              <p className="text-white/40 text-sm font-body mb-5">
+                {TYPE_LABELS[prop?.type] || prop?.type || ''}{prop?.city ? ` · ${prop.city}` : ''}
+              </p>
+
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4 mb-5">
+                <p className="text-white/70 text-sm font-body leading-relaxed">
+                  Вы можете <strong>убрать объект с публикации</strong> — он будет перемещён в архив и доступен для повторной публикации. Или <strong>удалить навсегда</strong> — это действие необратимо.
+                </p>
+              </div>
+
+              <label className="text-white/60 font-body text-sm mb-2 block">Введите пароль</label>
+              <input
+                type="password"
+                value={deletePassword}
+                onChange={(e) => { setDeletePassword(e.target.value); setDeleteError(''); }}
+                placeholder="Пароль от личного кабинета"
+                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white text-sm font-body placeholder:text-white/25 focus:outline-none focus:border-ocean-500/50 transition-colors mb-1"
+              />
+              {deleteError && <p className="text-red-500 text-xs font-body mb-3">{deleteError}</p>}
+
+              <div className="flex items-center justify-between gap-3 mt-5">
+                <button
+                  onClick={() => setDeleteTarget(null)}
+                  className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-sm font-body font-medium transition-all"
+                >
+                  Отменить
+                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={async () => {
+                      setDeleting(true);
+                      try {
+                        await supabase.from('properties').update({ is_published: false }).eq('id', deleteTarget);
+                        setDeleteTarget(null);
+                        fetchMyProperties();
+                      } catch { setDeleteError('Ошибка'); } finally { setDeleting(false); }
+                    }}
+                    disabled={deleting}
+                    className="px-4 py-2.5 rounded-xl bg-ocean-500 hover:bg-ocean-400 text-white text-sm font-body font-semibold transition-all disabled:opacity-50"
+                  >
+                    {deleting ? '...' : 'В архив'}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!deletePassword) { setDeleteError('Введите пароль для удаления'); return; }
+                      setDeleting(true);
+                      setDeleteError('');
+                      try {
+                        const { error: authError } = await supabase.auth.signInWithPassword({ email: user.email, password: deletePassword });
+                        if (authError) { setDeleteError('Неверный пароль'); setDeleting(false); return; }
+                        await supabase.from('properties').delete().eq('id', deleteTarget);
+                        setDeleteTarget(null);
+                        fetchMyProperties();
+                      } catch { setDeleteError('Ошибка при удалении'); } finally { setDeleting(false); }
+                    }}
+                    disabled={deleting || !deletePassword}
+                    className="px-4 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-body font-semibold transition-all disabled:opacity-50"
+                  >
+                    {deleting ? '...' : 'Удалить'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+          );
+        })()}
+      </AnimatePresence>
     </div>
   );
 };

@@ -94,17 +94,17 @@ const Footer = () => {
           <p className="text-white/30 text-[11px] sm:text-[13px] font-body">
             © 2024 moremest. Все права защищены.
           </p>
-          <div className="flex items-center gap-6">
+          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-x-4 gap-y-1 sm:gap-6">
             <a href="#" className="text-white/30 text-[11px] sm:text-[13px] font-body hover:text-white/60 transition-colors">
               Публичная оферта
             </a>
             <a href="#" className="text-white/30 text-[11px] sm:text-[13px] font-body hover:text-white/60 transition-colors">
               Конфиденциальность
             </a>
-            <a href="#" className="text-white/30 text-[11px] sm:text-[13px] font-body hover:text-white/60 transition-colors">
+            <a href="#" className="text-white/30 text-[11px] sm:text-[13px] font-body hover:text-white/60 transition-colors hidden sm:inline">
               Условия использования
             </a>
-            <span className="text-white/30 text-[11px] sm:text-[13px] font-body">Русский ▾</span>
+            <span className="text-white/30 text-[11px] sm:text-[13px] font-body hidden sm:inline">Русский ▾</span>
           </div>
         </div>
       </div>

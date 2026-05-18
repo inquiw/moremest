@@ -105,7 +105,12 @@ const Header = () => {
           {navItems.map((item) => (
             <button
               key={item}
-              onClick={() => item === 'Для хозяев' ? navigate('/hosts') : null}
+              onClick={() => {
+                if (item === 'Для хозяев') navigate('/hosts');
+                else if (item === 'Гостиницы') navigate('/search?type=hotel');
+                else if (item === 'Отели') navigate('/search?type=large_hotel');
+                else if (item === 'Квартиры') navigate('/search?type=apartment');
+              }}
               className="text-white text-[15px] font-body font-medium hover:text-white/70 transition-colors duration-300"
             >
               {item}
@@ -115,7 +120,7 @@ const Header = () => {
 
         {/* Right Controls */}
         <div className="flex items-center gap-3 sm:gap-5">
-          <button className="hidden md:block text-white/70 hover:text-white transition-colors duration-300">
+          <button onClick={() => navigate('/profile?tab=favorites')} className="hidden md:block text-white/70 hover:text-white transition-colors duration-300">
             <Heart size={20} strokeWidth={1.5} />
           </button>
           <div ref={langRef} className="relative hidden md:block">
@@ -180,37 +185,59 @@ const Header = () => {
       </div>
 
       {/* Mobile Menu */}
-      <div className={`lg:hidden overflow-hidden transition-all duration-300 ${
-        mobileOpen ? 'max-h-[400px] opacity-100' : 'max-h-0 opacity-0'
-      }`}>
+      <AnimatePresence>
+      {mobileOpen && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+          className="lg:hidden overflow-hidden"
+        >
         <nav className="flex flex-col gap-1 px-4 sm:px-6 pb-6 pt-2">
           {navItems.map((item) => (
             <button
               key={item}
-              onClick={() => { setMobileOpen(false); if (item === 'Для хозяев') navigate('/hosts'); }}
-              className="text-white/90 text-lg font-body font-medium py-3 px-4 rounded-xl hover:bg-white/10 transition-colors duration-200 w-full text-left"
+              onClick={() => {
+                setMobileOpen(false);
+                if (item === 'Для хозяев') navigate('/hosts');
+                else if (item === 'Гостиницы') navigate('/search?type=hotel');
+                else if (item === 'Отели') navigate('/search?type=large_hotel');
+                else if (item === 'Квартиры') navigate('/search?type=apartment');
+              }}
+              className="text-white/90 text-base font-body font-medium py-3.5 px-4 rounded-xl hover:bg-white/10 active:bg-white/15 transition-colors duration-200 w-full text-left"
             >
               {item}
             </button>
           ))}
-          <div className="flex items-center gap-4 px-4 pt-4 border-t border-white/10 mt-2">
-            <button onClick={() => { setLang(lang === 'ru' ? 'en' : 'ru'); setMobileOpen(false); }} className="flex items-center gap-1.5 text-white/60 hover:text-white transition-colors">
-              <Globe size={18} strokeWidth={1.5} />
-              <span className="text-sm font-body">{languages.find(l => l.code === lang)?.label}</span>
+          <div className="flex flex-col gap-1 pt-3 border-t border-white/10 mt-2">
+            <button onClick={() => { setMobileOpen(false); navigate('/profile?tab=favorites'); }} className="flex items-center gap-3 text-white/70 hover:text-white active:bg-white/10 py-3.5 px-4 rounded-xl transition-colors w-full text-left">
+              <Heart size={18} strokeWidth={1.5} />
+              <span className="text-base font-body font-medium">Избранное</span>
             </button>
             {user ? (
-              <button onClick={() => { setMobileOpen(false); navigate('/profile'); }} className="relative text-white/60 hover:text-white transition-colors">
-                <User size={20} strokeWidth={1.5} />
-                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-[#1a1a1f]" />
+              <button onClick={() => { setMobileOpen(false); navigate('/profile'); }} className="flex items-center gap-3 text-white/70 hover:text-white active:bg-white/10 py-3.5 px-4 rounded-xl transition-colors w-full text-left">
+                <span className="relative">
+                  <User size={18} strokeWidth={1.5} />
+                  <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-[#1a1a1f]" />
+                </span>
+                <span className="text-base font-body font-medium">Профиль</span>
               </button>
             ) : (
-              <button onClick={() => { setMobileOpen(false); setAuthOpen(true); }} className="text-white/60 hover:text-white transition-colors">
-                <User size={20} strokeWidth={1.5} />
+              <button onClick={() => { setMobileOpen(false); setAuthOpen(true); }} className="flex items-center gap-3 text-white/70 hover:text-white active:bg-white/10 py-3.5 px-4 rounded-xl transition-colors w-full text-left">
+                <User size={18} strokeWidth={1.5} />
+                <span className="text-base font-body font-medium">Войти</span>
               </button>
             )}
+            <button onClick={() => { setLang(lang === 'ru' ? 'en' : 'ru'); setMobileOpen(false); }} className="flex items-center gap-3 text-white/60 hover:text-white active:bg-white/10 py-3.5 px-4 rounded-xl transition-colors w-full text-left">
+              <Globe size={18} strokeWidth={1.5} />
+              <span className="text-base font-body font-medium">{languages.find(l => l.code === lang)?.label}</span>
+            </button>
           </div>
         </nav>
-      </div>
+        </motion.div>
+      )}
+      </AnimatePresence>
     </header>
 
     {/* Auth Modal */}
@@ -230,7 +257,7 @@ const Header = () => {
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
             transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
             onClick={(e) => e.stopPropagation()}
-            className="relative w-full max-w-md mx-4 rounded-3xl bg-[#1a1a2e]/90 backdrop-blur-xl border border-white/10 shadow-2xl shadow-black/50 p-8"
+            className="relative w-full max-w-md mx-4 rounded-2xl sm:rounded-3xl bg-[#1a1a2e]/90 backdrop-blur-xl border border-white/10 shadow-2xl shadow-black/50 p-6 sm:p-8"
           >
             {/* Close button */}
             <button

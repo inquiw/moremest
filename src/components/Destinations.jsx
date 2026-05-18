@@ -39,7 +39,7 @@ const Destinations = () => {
 
   return (
     <section className="bg-sand-50 py-24 lg:py-32 overflow-hidden">
-      <div className="max-w-8xl mx-auto px-6 lg:px-10">
+      <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-10">
         <div className="flex flex-col lg:flex-row gap-12 lg:gap-16">
           {/* Left Column */}
           <motion.div
@@ -74,7 +74,7 @@ const Destinations = () => {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ duration: 0.5, delay: i * 0.1 }}
-                  className="shrink-0 w-[200px] lg:w-[220px] snap-start group cursor-pointer"
+                  className="shrink-0 w-[160px] sm:w-[200px] lg:w-[220px] snap-start group cursor-pointer"
                 >
                   <div className="relative aspect-[3/4] rounded-[28px] overflow-hidden mb-3">
                     <img

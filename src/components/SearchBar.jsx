@@ -540,6 +540,7 @@ const SearchBar = ({
               params.set('checkOut', `${y}-${m}-${d}`);
             }
             if (adults + children + infants + pets > 0) params.set('guests', `${adults + children}`);
+            if (pets > 0) params.set('pets', `${pets}`);
             navigate(`/search?${params.toString()}`);
           }}
           className="w-10 h-10 sm:w-14 sm:h-14 rounded-xl bg-ocean-700 hover:bg-ocean-600 flex items-center justify-center shrink-0 transition-all duration-300 hover:scale-105 shadow-lg shadow-ocean-900/25 active:scale-95"

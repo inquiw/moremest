@@ -12,7 +12,7 @@ const features = [
 const Features = () => {
   return (
     <section className="py-10">
-      <div className="max-w-8xl mx-auto px-6 lg:px-10">
+      <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-10">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -21,7 +21,7 @@ const Features = () => {
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-white/5"
         >
           {features.map((f, i) => (
-            <div key={i} className="flex items-center gap-4 px-6 py-6 lg:py-8">
+            <div key={i} className="flex items-center gap-3 sm:gap-4 px-4 sm:px-6 py-5 sm:py-6 lg:py-8">
               <div className="shrink-0 w-11 h-11 rounded-full bg-ocean-500/15 flex items-center justify-center">
                 <f.icon size={20} className="text-ocean-400" strokeWidth={1.5} />
               </div>

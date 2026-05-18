@@ -72,7 +72,11 @@ const Hosts = () => {
   };
 
   return (
-    <div className="min-h-screen antialiased">
+    <div className="relative min-h-screen antialiased">
+      <img src="/hero-bg.jpg" alt="" className="fixed inset-0 w-full h-full object-cover pointer-events-none" />
+      <div className="fixed inset-0 bg-gradient-to-b from-[#1a1a1f]/80 via-[#111114]/85 to-[#0a0a0c]/95 pointer-events-none" />
+
+      <div className="relative z-10">
       <Header />
 
       <div className="pt-28 sm:pt-32 pb-20">
@@ -141,7 +145,7 @@ const Hosts = () => {
             <h2 className="text-2xl sm:text-3xl font-display font-semibold text-white mb-8 text-center">
               Прозрачные тарифы
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+            <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
               {[
                 {
                   title: 'Квартира / Дом',
@@ -200,7 +204,7 @@ const Hosts = () => {
                   <p className="text-white/60 font-body text-sm leading-relaxed mb-5">{tariff.text}</p>
                   <button
                     onClick={() => navigate('/add-property')}
-                    className="w-full mt-4 py-3 rounded-xl bg-white/10 hover:bg-ocean-500 text-white text-sm font-body font-semibold transition-colors duration-300"
+                    className="w-full mt-4 py-3 rounded-xl bg-ocean-500 hover:bg-ocean-400 text-white text-sm font-body font-semibold shadow-lg shadow-ocean-500/20 transition-all duration-300"
                   >
                     Выбрать
                   </button>
@@ -372,7 +376,7 @@ const Hosts = () => {
                     {/* Property type */}
                     <div>
                       <label className="text-white/40 font-body text-xs mb-2 block">Что вы сдаёте?</label>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                         {PROPERTY_TYPES.map((pt) => (
                           <button
                             key={pt.value}
@@ -414,6 +418,7 @@ const Hosts = () => {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
     </div>
   );
 };

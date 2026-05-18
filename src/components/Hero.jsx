@@ -42,7 +42,8 @@ const Hero = () => {
   }, []);
 
   const filtered = useMemo(() => {
-    const source = loaded ? allProperties : fallbackProperties;
+    if (!loaded) return [];
+    const source = allProperties;
     switch (activeTab) {
       case 0: // Популярные
         return [...source].sort((a, b) => (b.reviews || 0) - (a.reviews || 0)).slice(0, 9);
@@ -61,7 +62,7 @@ const Hero = () => {
       default:
         return source.slice(0, 9);
     }
-  }, [activeTab, allProperties]);
+  }, [activeTab, allProperties, loaded]);
 
   const updateScrollButtons = () => {
     const el = scrollRef.current;
@@ -200,7 +201,7 @@ const Hero = () => {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1, delay: 1.2, ease: [0.22, 1, 0.36, 1] }}
-            className="mt-4 sm:mt-6 lg:mt-10 w-full max-w-4xl grid grid-cols-2 md:grid-cols-4"
+            className="mt-4 sm:mt-6 lg:mt-10 w-full max-w-4xl grid grid-cols-2 md:grid-cols-4 gap-y-1"
           >
             {[
               { icon: ShieldCheck, title: 'Проверенные объекты', desc: 'Тщательная верификация' },
@@ -213,7 +214,7 @@ const Hero = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 1.4 + i * 0.1, ease: [0.22, 1, 0.36, 1] }}
-                className={`flex items-start gap-3 px-4 py-3 ${i > 0 ? 'border-l border-white/15' : ''}`}
+                className={`flex items-start gap-3 px-3 sm:px-4 py-3 ${i > 0 ? 'md:border-l border-white/15' : ''} ${i === 2 ? 'md:border-l' : ''}`}
               >
                 <div className="shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-white/10 flex items-center justify-center">
                   <f.icon size={20} className="text-white" strokeWidth={1.5} />
@@ -260,15 +261,30 @@ const Hero = () => {
                   onScroll={updateScrollButtons}
                   onLoad={updateScrollButtons}
                 >
-                {filtered.map((p, i) => (
+                {filtered.length === 0 ? (
+                  /* Skeleton placeholders */
+                  Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="shrink-0 w-[72%] sm:w-[45%] md:w-[calc(33.33%-12px)] lg:w-[calc(25%-12px)] rounded-2xl p-2.5 bg-white/10 animate-pulse">
+                      <div className="aspect-[4/3] rounded-xl bg-white/15 mb-2" />
+                      <div className="px-1 pb-1 space-y-2">
+                        <div className="h-5 bg-white/10 rounded-lg w-3/4" />
+                        <div className="h-4 bg-white/10 rounded-lg w-1/2" />
+                        <div className="flex justify-between">
+                          <div className="h-4 bg-white/10 rounded w-1/3" />
+                          <div className="h-5 bg-white/10 rounded w-1/3" />
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : filtered.map((p, i) => (
                   <motion.div
                     key={p.id}
-                    initial={false}
+                    initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.4, delay: i * 0.05, ease: [0.22, 1, 0.36, 1] }}
+                    transition={{ duration: 0.5, delay: i * 0.06, ease: [0.22, 1, 0.36, 1] }}
                     data-card
                     onClick={() => navigate(`/property/${p.id}`)}
-                    className="shrink-0 w-[calc(25%-12px)] group cursor-pointer bg-gradient-to-b from-[#f5ebe0] via-[#fef9f3] to-white rounded-2xl p-2.5 shadow-lg shadow-black/20 transition-transform duration-300 hover:scale-[1.02]"
+                    className="shrink-0 w-[72%] sm:w-[45%] md:w-[calc(33.33%-12px)] lg:w-[calc(25%-12px)] group cursor-pointer bg-gradient-to-b from-[#f5ebe0] via-[#fef9f3] to-white rounded-3xl p-2.5 shadow-lg shadow-black/20 transition-transform duration-300 hover:scale-[1.02]"
                   >
                     <div className="relative aspect-[4/3] rounded-xl overflow-hidden mb-2">
                       <img
@@ -292,7 +308,7 @@ const Hero = () => {
                       </h3>
                       <div className="flex items-center gap-1 text-gray-400 text-sm font-body mb-1.5">
                         <MapPin size={13} className="shrink-0" />
-                        <span>{p.location}, {p.address}</span>
+                        <span>{p.city || p.location}{p.address ? `, ${p.address}` : ''}</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1">
